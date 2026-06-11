@@ -1,0 +1,112 @@
+# Control docker apps
+# --------
+_DAPP_FN_DIR=/opt/dapps
+
+# The autocompletion function
+_dapp_completions() {
+  local curr_word="${COMP_WORDS[COMP_CWORD]}"
+
+  if [ "$COMP_CWORD" -eq 1 ]; then
+    local apps_folder="${_DAPP_FN_DIR:-/opt/dapps}"
+    local apps=$(find "$apps_folder" -maxdepth 1 -mindepth 1 -type d -printf '%f\n' 2>/dev/null)
+
+    COMPREPLY=( $(compgen -W "$apps" -- "$curr_word") )
+  else
+    COMPREPLY=()
+  fi
+}
+
+# Bind the completion function to your 'dapp' command
+complete -F _dapp_completions dapp
+
+
+dapp() {
+  local app_name="$1"
+  local apps_folder="${_DAPP_FN_DIR:-/opt/dapps}"
+  local app_dir="${apps_folder}/$app_name"
+  local src
+
+  err(){ echo "❌ Error: $@";}
+
+  # Help Menu
+  if [ "$1" == "-h" ] || [ "$1" == "--help" ]; then
+  cat <<EOF
+Usage: dapp [app_name] [command] [args]
+
+Options:
+  -h, --help      Show this help menu
+  [app_name]      docker compose command
+  [app_name]      List files in app folder (if no command given)
+  [app_name] -c   Change directory into the app folder
+
+Examples:
+  dapp myapp up -d     Run docker compose up
+  dapp myapp -c        Jump to the app directory
+EOF
+    return 0
+  fi
+
+  # No arguments? List apps and bail.
+  if [ "$#" -eq 0 ]; then
+    echo "--- Available Docker Apps in ${apps_folder} --- (use -h for help)"
+    find "${apps_folder}" -maxdepth 1 -mindepth 1 -type d -printf '%f\n'
+    return 0
+  fi
+
+  # Check if the directory exists
+  if [ ! -d "$app_dir" ]; then
+    err "Docker App '$app_name' not found in /opt/dapps/"
+    return 1
+  fi
+
+  # Change Directory logic
+  if [ "$2" == "-c" ] || [ "$2" == "--cd" ]; then
+    cd "$app_dir" && echo "📂 Jumped to $app_dir"
+    return 0
+  fi
+
+  # Resolve the compose file
+  if [ -f "$app_dir/compose.yml" ]; then
+    src="compose.yml"
+  elif [ -f "$app_dir/docker-compose.yml" ]; then
+    src="docker-compose.yml"
+  else
+    err "No compose file found in $app_dir"
+    return 1
+  fi
+
+  # Auto-detect the best docker compose command available
+  local _DOCKER_COMPOSE
+
+  if docker compose version &>/dev/null; then
+    _DOCKER_COMPOSE="docker compose"
+  elif docker-compose version &>/dev/null; then
+    _DOCKER_COMPOSE="docker-compose"
+  else
+    err "Docker Compose not found"; exit 1
+  fi
+
+  # Execution logic
+  local cmd="${2:-ps}"
+  local answer
+  local param
+  local ef="{app_name}.env"
+
+  # Auto-detect the best docker compose command available
+  pushd "$app_dir" &>/dev/null
+      if [ -f "$ef" ]; then
+        printf 'Use env file? [y/N] ' "$$ef" >&2
+
+        [  read -r answer </dev/tty ] || return 0
+
+        case "$answer" in
+          [Yy]*)
+            param="--env-file $ef"
+            ;;
+        esac
+      fi
+
+    echo "🚀 $app_name -> docker compose $cmd ${@:3}"
+    sudo $_DOCKER_COMPOSE -f "$src" "$cmd" "$param ${@:3}"
+  popd &>/dev/null
+}

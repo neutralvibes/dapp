@@ -1,0 +1,778 @@
+#!/usr/bin/env bash
+
+set -u
+set -o pipefail
+
+DAPP_VERSION="${DAPP_VERSION:-0.1.0}"
+
+SCRIPT_PATH="$(readlink -f "${BASH_SOURCE[0]}" 2>/dev/null || realpath "${BASH_SOURCE[0]}" 2>/dev/null || echo "${BASH_SOURCE[0]}")"
+SCRIPT_DIR="$(cd "$(dirname "$SCRIPT_PATH")" >/dev/null 2>&1 && pwd)"
+DAPP_CONFIG_FILE="$SCRIPT_DIR/.config"
+
+DAPP_DIR="${DAPP_DIR:-}"
+
+# Assign recognised values from .config file
+if [[ -z "$DAPP_DIR" && -f "$DAPP_CONFIG_FILE" ]]; then
+    while IFS='=' read -r key value; do
+        case "$key" in
+            DAPP_DIR)
+                value="${value%\"}"
+                value="${value#\"}"
+                DAPP_DIR="$value"
+                ;;
+            DAPP_EDITOR)
+                value="${value%\"}"
+                value="${value#\"}"
+                DAPP_EDITOR="$value"
+                ;;
+        esac
+    done < "$DAPP_CONFIG_FILE"
+fi
+
+DAPP_DIR="${DAPP_DIR:-/opt/dapps}"
+DAPP_SELF_UPDATE_URL="${DAPP_SELF_UPDATE_URL:-https://raw.githubusercontent.com/<owner>/<repo>/main/dapp_cmd}"
+
+ORIG_CMD="$@"
+ORIG_PARAM="$0"
+
+# Verbose logging if DAPP_VERBOSE=1
+log() {
+    if [[ "${DAPP_VERBOSE:-}" == "1" ]]; then
+        echo "$@"
+    fi
+}
+
+err() {
+    echo -e "❌ Error: $*" >&2
+}
+
+require_root() {
+
+    if (( EUID != 0 )); then
+        err 'This command must be run as root.\n'
+        printf 'Try:\n'
+        printf '\tsudo %q' "$(basename $ORIG_PARAM)"
+        printf ' %q' "$ORIG_CMD"
+        printf '\n'
+        exit 1
+    fi
+
+}
+
+# Returns 0 = yes \ 1 = no
+yn_answer() {
+   # honor non-interactive mode
+   if [[ "${DAPP_ASSUME_YES:-}" == "1" ]]; then
+       log "Auto-accepting prompt ($1)"
+       return 0
+   fi
+   while true; do
+        read -p "$1 (Y/N) [N] ? " answer
+        case "$answer" in
+            [yY])
+                return 0
+                break
+                ;;
+            *)
+                return 1
+                break
+                ;;
+        esac
+    done
+}
+
+
+find_compose_file() {
+    local dir="$1"
+
+    for file in \
+        compose.yml \
+        compose.yaml \
+        docker-compose.yml \
+        docker-compose.yaml
+    do
+        [[ -f "$dir/$file" ]] && {
+            echo "$file"
+            return 0
+        }
+    done
+
+    return 1
+}
+
+expand_shortcut_args() {
+    local cmd="$1"
+    shift
+
+    case "$cmd" in
+        b) SHORTCUT_ARGS=(build "$@");;
+        d) SHORTCUT_ARGS=(down "$@");;
+        e) SHORTCUT_ARGS=(exec "$@");;
+        l) SHORTCUT_ARGS=(logs "$@");;
+        lf) SHORTCUT_ARGS=(logs -f "$@");;
+        k) SHORTCUT_ARGS=(kill "$@");;
+        p) SHORTCUT_ARGS=(pull "$@");;
+        r) SHORTCUT_ARGS=(restart "$@");;
+        t) SHORTCUT_ARGS=(top "$@");;
+        u) SHORTCUT_ARGS=(up -d "$@");;
+        @bash) SHORTCUT_ARGS=(exec -it "$@" bash);;
+        @sh) SHORTCUT_ARGS=(exec -it "$@" sh);;
+        *) SHORTCUT_ARGS=("$cmd" "$@");;
+    esac
+}
+
+list_apps() {
+    [[ -d "$DAPP_DIR" ]] || (err "folder does not exist, ${DAPP_DIR} "; return 1)
+
+    [ $# -eq 1 ] && echo "--- Available Docker Apps in ${DAPP_DIR} --- (use -h for help)"
+
+    local dir
+    local -a apps=()
+
+    # Gather matching directories
+    for dir in "$DAPP_DIR"/*; do
+        [[ -d "$dir" ]] || continue
+        if find_compose_file "$dir" >/dev/null 2>&1; then
+            apps+=( "$(basename "$dir")" )
+        fi
+    done
+
+    # Check array length instead of using a flag variable
+    if [ ${#apps[@]} -eq 0 ]; then
+        echo "NO-DOCKER-APPS-FOUND, under dapps folder ${DAPP_DIR}"
+    else
+        # Sort and display the found apps
+        printf '%s\n' "${apps[@]}" | sort
+    fi
+}
+
+print_help() {
+cat <<EOF
+dapp - docker compose wrapper
+
+USAGE:
+  dapp [OPTION]                 Global options
+  dapp [APP] [COMMAND] [ARGS]   Run docker compose command
+
+GLOBAL OPTIONS:
+  ls                            List all Docker apps under DAPP_DIR
+                                (folders with a compose file)
+
+  status                        Show running status of all apps
+
+BASIC COMMANDS (from anywhere)
+  dapp APP                      Quick 'ps' to get APP info
+  dapp APP path                 Returns path to app directory
+  dapp APP edit                 Edit APP's compose file in editor
+  dapp APP COMMAND [ARGS]       Docker compose COMMAND [ARGS]' on APP
+  dapp APP @bash SERVICE        bash console for APP SERVICE
+  dapp APP @sh SERVICE          sh console for APP SERVICE
+
+SHORTCUTS COMMANDS (work with APP or in local mode):
+  b                             build
+  u                             up -d
+  d                             down
+  e                             exec
+  k                             kill
+  l                             logs
+  lf                            logs -f
+  r                             restart
+  p                             pull
+  t                             top
+  SPECICALS SHORTCUTS
+  @bash                         exec -it SERVICE bash
+  @sh                           exec -it SERVICE sh
+
+COMMON DOCKER COMPOSE COMMANDS:
+  ps                            List running containers
+  up                            Start services
+  down                          Stop services
+  etc...                        ALL other compose commands
+
+LOCAL MODE (run from inside APP folder):
+  cd /opt/dapps/nginx
+  dapp ps                       Uses ./compose.yml
+  dapp logs -f
+  dapp u                        'up -d' Start with shortcut
+  dapp @bash caddy               bash console for SERVICE caddy
+  dapp @sh emby                  sh console for SERVICE emby
+
+OPTIONS:
+  --apps-folder                 Show the configured DAPP_DIR
+  --list-apps                   List available apps (shortcut above)
+
+  --install                     Install globally with bash completion
+  --uninstall                   Uninstall from system
+  --install-dcd                 Install the dcd helper function into ~/.bashrc
+  --uninstall-dcd               Remove the dcd helper function from ~/.bashrc
+  --self-update                 Check for a newer version and update if available
+  --yes                         Assume yes for prompts (non-interactive)
+
+  -h, --help                    Show this help message
+  -v                            Show dapp version
+
+EXAMPLES:
+  dapp ls                       List all apps
+  dapp status                   Show app statuses
+  dapp nginx up                 Start nginx
+  dapp traefik logs -f          Stream traefik logs
+  dapp postgresql d             Stop postgresql
+  dapp redis exec cli ping      Ping redis
+
+ENVIRONMENT:
+  DAPP_DIR                      Docker apps directory, $DAPP_DIR
+  DAPP_EDITOR                   Editor for 'dapp APP edit', $DAPP_EDITOR
+
+For more info: https://github.com/neutralgit config user.email "YOUR_GITHUB_ID@users.noreply.github.com"
+git commit --amend --reset-author --no-edit
+git push -u origin main --force/dapp
+EOF
+}
+
+# Preprocess global flags like --yes/-y to support non-interactive modes
+NEW_ARGS=()
+for arg in "$@"; do
+    case "$arg" in
+        --yes|-y)
+            DAPP_ASSUME_YES=1
+            ;;
+        *)
+            NEW_ARGS+=("$arg")
+            ;;
+    esac
+done
+if [ "${#NEW_ARGS[@]}" -gt 0 ]; then
+    set -- "${NEW_ARGS[@]}"
+else
+    set --
+fi
+
+print_dapp_autocomplete() {
+cat <<'EOF'
+_dapp_completions() {
+    local curr="${COMP_WORDS[COMP_CWORD]}"
+
+    if [[ "$COMP_CWORD" -eq 1 ]]; then
+        COMPREPLY=(
+            $(compgen -W "$(dapp --list-apps) ls status" -- "$curr")
+        )
+        return
+    fi
+
+    if [[ "$COMP_CWORD" -eq 2 ]]; then
+        COMPREPLY=(
+            $(compgen -W "path edit ps up down restart start stop logs pull build config exec top images u d l r" -- "$curr")
+        )
+        return
+    fi
+
+    COMPREPLY=()
+}
+
+complete -F _dapp_completions dapp
+EOF
+}
+
+
+set_dcd_target() {
+    local fn='.bashrc'
+
+    if (( $# == 0 )); then
+        _DCD_TARGET="$HOME/${DCD_FILE:-$fn}"
+    else
+        local user=$1
+        local userhome=$(getent passwd $user | cut -d: -f6)
+
+        if [[ -z $userhome ]]; then
+            # If empty
+            err "User: $user has no home directory"
+            return 1
+        else
+            _DCD_TARGET="$userhome/${DCD_FILE:-$fn}"
+        fi
+    fi
+
+}
+
+# get_dcd_target() {
+#     local account={$1:-$USER}
+#     # Grab home dir from account
+#     local dir=$(getent passwd $account | cut -d: -f6)
+#     echo "$dir/${DCD_FILE:-'.bashrc'}"
+# }
+
+set_dcd_var() {
+        DCD_CMD="$(cat <<'EOF'
+dcd() { cd "$(dapp "$1" path)"; }
+# dcd autocompletion function
+_dcd_completions() {
+    local curr_word="${COMP_WORDS[COMP_CWORD]}"
+
+    if [ "$COMP_CWORD" -eq 1 ]; then
+        # local apps_folder="${_DAPP_FN_DIR:-/opt/dapps}"
+        local apps_folder="$(dapp --apps-folder)"
+        local apps=$(find "$apps_folder" -maxdepth 1 -mindepth 1 -type d -printf '%f\n' 2>/dev/null)
+
+        COMPREPLY=( $(compgen -W "$apps" -- "$curr_word") )
+    else
+        COMPREPLY=()
+    fi
+}
+
+# Bind the completion function to 'dcd' command
+complete -F _dcd_completions dcd
+EOF
+)"
+}
+
+is_dcd_installed() {
+    # Returns:
+    #  1  installed
+    #  0  not
+    local BRC="$_DCD_TARGET"
+
+    if grep -qF 'dcd() {' "$BRC"; then
+        echo "dcd present in ${BRC}"
+        log "Existing dcd block found in $BRC"
+        return 1
+    fi
+
+    return 0
+}
+
+install_dcd() {
+    if (( EUID == 0 )); then
+      local inject=`cat << 'EOF'
+
+---------------------- WARNING! ------------------
+-- You are installing under 'root' (maybe sudo) --
+--------------------------------------------------
+
+'dcd' should ONLY be installed for the intended user.
+
+If this is intentinal proceed below entering 'Y'
+
+Otherwise select 'N' then:
+    dapp --install-dcd          # for your user.
+
+.
+EOF`
+    fi
+    cat << EOF
+=========================================
+==========   'dcd' Installer   ==========
+=========================================
+
+    dcd APP           cd to DAPP_DIR/APP
+
+EXAMPLES:
+    dcd nginx           cd to DAPP_DIR/nginx
+
+    dcd ng[TAB]         Completes 'dcd nginx'
+
+The 'dcd' function is injected into a user '.bashrc' file.
+${inject:-}
+EOF
+    yn_answer "Install 'dcd' command"
+
+    [ $? -ne 0 ] && echo "Aborting dcd installation" && exit 1
+
+    set_dcd_target
+    [ $? -ne 0 ] && exit 1
+
+    set_dcd_var
+
+    local line="$DCD_CMD"
+    local BRC="$_DCD_TARGET"
+
+    if [[ ! -f "$BRC" ]]; then
+        log "$BRC does not exist; creating"
+        touch "$BRC" || {
+            echo "$BRC cannot be created, installation failed"
+            exit 1
+        }
+    fi
+
+    # Check for an existing dcd function as a simple, robust marker
+    is_dcd_installed
+
+    if [ $? -eq 1 ]; then
+        exit 1
+    fi
+
+    log "Appending dcd function to $BRC"
+    printf "%s\n" "" >> "$BRC"
+    printf "%s\n" "$line" >> "$BRC"
+    cat << EOF
+✅ dcd function for $USER installed to $BRC
+
+Logout/in to use
+    OR
+        source ~/.bashrc  # For immediate use
+EOF
+}
+
+uninstall_dcd() {
+    local user
+
+    if [ $# -eq 0 ]; then
+        user=$USER
+    else
+        # If user supplied set target to users installation
+        user=$1
+    fi
+
+    echo "Checking if dcd installed for user, $user"
+
+    set_dcd_target $user
+    [ $? -ne 0 ] && return 1
+
+    local BRC="$_DCD_TARGET"
+
+    if [[ -f "$BRC" ]]; then
+
+        is_dcd_installed
+
+        if [ $? -eq 0 ]; then
+            echo "dcd NOT installed in ${BRC}"
+            # Fallback: if the current HOME file differs and exists, try removing there too
+            if [[ "$BRC" != "$HOME/.bashrc" && -f "$HOME/.bashrc" ]]; then
+                log "Attempting fallback removal from $HOME/.bashrc"
+                sed -i '/^dcd() {/,/complete -F _dcd_completions dcd/d' "$HOME/.bashrc" || true
+                echo "Fallback: attempted removal from $HOME/.bashrc"
+            fi
+            return
+        fi
+
+        log "Removing dcd block from $BRC"
+        sed -i '/^dcd() {/,/complete -F _dcd_completions dcd/d' "$BRC" || true
+        echo "✅ dcd function removed for $user from $BRC, user must logout to complete."
+    else
+        err "User $user does not have dcd installed in $BRC"
+    fi
+}
+
+download_content() {
+    local url="$1"
+
+    if command -v curl >/dev/null 2>&1; then
+        curl -fsSL "$url"
+        return $?
+    fi
+
+    if command -v wget >/dev/null 2>&1; then
+        wget -qO- "$url"
+        return $?
+    fi
+
+    return 1
+}
+
+download_latest() {
+    local url="$1"
+    local dst="$2"
+
+    if command -v curl >/dev/null 2>&1; then
+        curl -fsSL "$url" -o "$dst"
+        return $?
+    fi
+
+    if command -v wget >/dev/null 2>&1; then
+        wget -qO "$dst" "$url"
+        return $?
+    fi
+
+    return 1
+}
+
+remote_version() {
+    local url="$1"
+    download_content "$url" | grep -m1 '^DAPP_VERSION=' | sed -E 's/^DAPP_VERSION="([^"]+)".*/\1/' || true
+}
+
+version_compare() {
+    local a b i
+    local IFS=.
+    read -ra a <<< "$1"
+    read -ra b <<< "$2"
+
+    for i in 0 1 2; do
+        local ai=${a[i]:-0}
+        local bi=${b[i]:-0}
+        if (( ai < bi )); then
+            return 1
+        fi
+        if (( ai > bi )); then
+            return 2
+        fi
+    done
+
+    return 0
+}
+
+self_update() {
+    local url="${DAPP_SELF_UPDATE_URL:-}"
+    if [[ -z "$url" || "$url" == *"<"* || "$url" == *">"* ]]; then
+        err "DAPP_SELF_UPDATE_URL is not configured. Set it to the raw GitHub URL for this script."
+        return 1
+    fi
+
+    local remote_ver
+    remote_ver="$(remote_version "$url")" || {
+        err "Unable to fetch remote version from $url"
+        return 1
+    }
+
+    if [[ -z "$remote_ver" ]]; then
+        err "Could not parse remote version from $url"
+        return 1
+    fi
+
+    version_compare "$DAPP_VERSION" "$remote_ver"
+    case $? in
+        0)
+            echo "✅ dapp is already up to date (version $DAPP_VERSION)"
+            return 0
+            ;;
+        2)
+            echo "✅ Remote version ($remote_ver) is not newer than current version ($DAPP_VERSION)"
+            return 0
+            ;;
+    esac
+
+    if [[ "${DAPP_ALLOW_USER_INSTALL:-}" != "1" ]]; then
+        require_root
+    fi
+
+    local target
+    local tmp
+
+    target="$(readlink -f "$0" 2>/dev/null || realpath "$0" 2>/dev/null || echo "$0")"
+
+    tmp="$(mktemp /tmp/dapp-self-update.XXXXXX)" || {
+        err "Failed to create temporary file"
+        return 1
+    }
+
+    if ! download_latest "$url" "$tmp"; then
+        rm -f "$tmp"
+        err "Failed to download latest version"
+        return 1
+    fi
+
+    if ! grep -q '^#!/usr/bin/env bash' "$tmp"; then
+        rm -f "$tmp"
+        err "Downloaded file does not look like a valid script"
+        return 1
+    fi
+
+    chmod +x "$tmp"
+    mv "$tmp" "$target"
+
+    echo "✅ Updated dapp from version $DAPP_VERSION to $remote_ver at $target"
+}
+
+get_dapp_install_target() {
+    echo "${DAPP_INSTALL_TARGET:-/usr/local/bin/dapp}"
+}
+
+install_self() {
+    local target="$(get_dapp_install_target)"
+    local completion_dir="${DAPP_COMPLETION_DIR:-/usr/share/bash-completion/completions}"
+    local src
+
+    # allow non-root installs for testing via DAPP_ALLOW_USER_INSTALL=1
+    if [[ "${DAPP_ALLOW_USER_INSTALL:-}" != "1" ]]; then
+        require_root
+    else
+        log "User-mode install enabled (DAPP_ALLOW_USER_INSTALL=1)"
+    fi
+
+    src="$(readlink -f "$0" 2>/dev/null || realpath "$0" 2>/dev/null || echo "$0")"
+
+    mkdir -p "$(dirname "$target")"
+    ln -sfn "$src" "$target"
+    mkdir -p "$completion_dir"
+
+    "$target" --autocomplete | tee "$completion_dir/dapp" >/dev/null || true
+
+    cat << EOF
+✅ dapp installed to $target
+
+Default uses '/opt/dapps' (DAPP_DIR) as parent for appication sub-folders
+
+    (sudo) nano '/opt/dapp_cmd/.config'     # To confiure 'DAPP_DIR' if differs
+
+'dapp' usage:
+    dapp -h                     For further info
+    dapp --apps-folder          To see configured parent folder
+
+
+Consider 'dcd' for a quick 'cd' to an apps folder.
+
+    dcd niginx                  cd to DAPP_DIR/nginx
+
+    Installation:
+        dapp --install-dcd
+
+EOF
+
+}
+
+uninstall_self() {
+    # allow non-root uninstall for testing via DAPP_ALLOW_USER_INSTALL=1
+    if [[ "${DAPP_ALLOW_USER_INSTALL:-}" != "1" ]]; then
+        require_root
+    else
+        log "User-mode uninstall enabled (DAPP_ALLOW_USER_INSTALL=1)"
+    fi
+
+    # remove dcd installations first
+    uninstall_dcd
+    if [[ -n "${SUDO_USER:-}" ]]; then
+        uninstall_dcd "$SUDO_USER"
+    fi
+
+    # Now remove dapp
+    local target="$(get_dapp_install_target)"
+    local completion_dir="${DAPP_COMPLETION_DIR:-/usr/share/bash-completion/completions}"
+
+    rm -f "$target"
+    rm -f "$completion_dir/dapp"
+
+    # set_dcd_var
+
+    # if [[ -f "$HOME/.bashrc" ]]; then
+    #     # Remove the dcd function block between the dcd() start and the completion binding
+    #     sed -i '/^dcd() {/,/complete -F _dcd_completions dcd/d' "$HOME/.bashrc" || true
+    # fi
+
+    echo "✅ dapp uninstall completed"
+}
+
+edit_app() {
+    local app="$1"
+    local dir="$DAPP_DIR/$app"
+
+    [[ -d "$dir" ]] || {
+        err "Docker App '$app' not found under $DAPP_DIR"
+        return 1
+    }
+
+    local compose
+    compose="$(find_compose_file "$dir")" || {
+        err "No compose file found"
+        return 1
+    }
+
+    "${DAPP_EDITOR:-nano}" "$dir/$compose"
+}
+
+status_all() {
+    printf "%-25s %s\n" "APP" "STATUS"
+
+    local app
+
+    while read -r app; do
+        local dir="$DAPP_DIR/$app"
+        local compose
+
+        compose="$(find_compose_file "$dir")" || continue
+
+        if docker compose -f "$dir/$compose" ps -q 2>/dev/null | grep -q .; then
+            printf "%-25s running\n" "$app"
+        else
+            printf "%-25s stopped\n" "$app"
+        fi
+    done < <(list_apps)
+}
+
+detect_compose() {
+    if docker compose version >/dev/null 2>&1; then
+        echo "docker compose"
+        return 0
+    fi
+
+    if docker-compose version >/dev/null 2>&1; then
+        echo "docker-compose"
+        return 0
+    fi
+
+    return 1
+}
+
+case "${1:-}" in
+    --install) install_self; exit 0 ;;
+    --uninstall) uninstall_self; exit 0 ;;
+    --uninstall-dcd) uninstall_dcd; exit 0 ;;
+    --install-dcd) install_dcd; exit 0 ;;
+    --self-update) self_update; exit 0 ;;
+    --autocomplete) print_dapp_autocomplete; exit 0 ;;
+    --list-apps) list_apps; exit 0 ;;
+    --apps-folder) echo $DAPP_DIR; exit 0 ;;
+    -v) echo "dapp version ${DAPP_VERSION}"; exit 0 ;;
+    -h|--help) print_help; exit 0 ;;
+    ls) list_apps; exit 0 ;;
+    status) status_all; exit 0 ;;
+esac
+
+# No param list apps
+if [[ $# -eq 0 ]]; then
+    # list_apps 0
+    print_help
+    exit 0
+fi
+
+compose_cmd="$(detect_compose)" || {
+    err "Docker Compose not found"
+    exit 1
+}
+
+# Local mode
+if find_compose_file "$PWD" >/dev/null 2>&1; then
+    if [[ ! -d "$DAPP_DIR/$1" ]]; then
+        expand_shortcut_args "$@"
+        set -- "${SHORTCUT_ARGS[@]}"
+
+        compose_file="$(find_compose_file "$PWD")"
+        $compose_cmd -f "$compose_file" "$@"
+        exit $?
+    fi
+fi
+
+app="$1"
+app_dir="$DAPP_DIR/$app"
+
+[[ -d "$app_dir" ]] || {
+    err "Docker App '$app' not found under $DAPP_DIR"
+    exit 1
+}
+
+case "${2:-}" in
+    path) echo "$app_dir"; exit 0 ;;
+    edit) edit_app "$app"; exit $? ;;
+esac
+
+compose_file="$(find_compose_file "$app_dir")" || {
+    err "No compose file found in $app_dir"
+    exit 1
+}
+
+cmd="${2:-ps}"
+
+expand_shortcut_args "$cmd" "${@:3}"
+cmd="${SHORTCUT_ARGS[0]}"
+set -- "$app" "${SHORTCUT_ARGS[@]}"
+
+pushd "$app_dir" >/dev/null || exit 1
+
+$compose_cmd \
+    -f "$compose_file" \
+    "$cmd" \
+    "${@:3}"
+
+rc=$?
+
+popd >/dev/null || true
+
+exit "$rc"
