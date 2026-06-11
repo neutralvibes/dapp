@@ -9,47 +9,29 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Set up bash
+        uses: stefanzweifel/setup-bash@v1
+
       - name: Make test scripts executable
         run: |
-          chmod +x tests/*.sh || true
+          chmod +x tests/test_install_dcd.sh || true
+          chmod +x tests/test_install_self.sh || true
+          chmod +x tests/run_tests.sh || true
 
-      - name: Run test suite
+      - name: Install shellcheck
         run: |
-          set -euo pipefail
-          bash ./tests/run_tests.shname: CI
+          sudo apt-get update
+          sudo apt-get install -y shellcheck
 
-on:
-  push:
-    branches: [ main ]
-  pull_request:
-    branches: [ main ]
+      - name: Run shellcheck
+        run: |
+          make lint
 
-jobs:
-  test:
-    runs-on: ubuntu-latest
-
-    steps:
-    - name: Checkout
-      uses: actions/checkout@v4
-
-    - name: Set up bash
-      uses: stefanzweifel/setup-bash@v1
-
-    - name: Make tests executable
-      run: |
-        chmod +x tests/test_install_dcd.sh || true
-        chmod +x tests/test_install_self.sh || true
-        chmod +x tests/run_tests.sh || true
-
-    - name: Install shellcheck
-      run: |
-        sudo apt-get update
-        sudo apt-get install -y shellcheck
-
-    - name: Run make ci
-      run: |
-        make ci
+      - name: Run tests
+        run: |
+          ./tests/run_tests.sh
