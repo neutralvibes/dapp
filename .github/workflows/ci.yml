@@ -14,9 +14,6 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Set up bash
-        uses: stefanzweifel/setup-bash@v1
-
       - name: Make test scripts executable
         run: |
           chmod +x tests/test_install_dcd.sh || true
