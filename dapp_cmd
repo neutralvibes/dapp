@@ -32,7 +32,8 @@ fi
 DAPP_DIR="${DAPP_DIR:-/opt/dapps}"
 DAPP_SELF_UPDATE_URL="${DAPP_SELF_UPDATE_URL:-https://raw.githubusercontent.com/<owner>/<repo>/main/dapp_cmd}"
 
-ORIG_CMD=("$*")
+
+ORIG_CMD="$*"
 ORIG_PARAM="$0"
 
 # Verbose logging if DAPP_VERBOSE=1
@@ -51,7 +52,7 @@ require_root() {
     if (( EUID != 0 )); then
         err 'This command must be run as root.\n'
         printf 'Try:\n'
-        printf '\tsudo %q' "$(basename "{$ORIG_PARAM}")"
+        printf '\tsudo %q' "$(basename "${ORIG_PARAM}")"
         printf ' %q' "${ORIG_CMD[0]}"
         printf '\n'
         exit 1
@@ -59,13 +60,13 @@ require_root() {
 
 }
 
-# Returns 0 = yes \ 1 = no
 yn_answer() {
    # honor non-interactive mode
    if [[ "${DAPP_ASSUME_YES:-}" == "1" ]]; then
        log "Auto-accepting prompt ($1)"
        return 0
    fi
+
    while true; do
         read -rp "$1 (Y/N) [N] ? " answer
         case "$answer" in
@@ -74,7 +75,6 @@ yn_answer() {
         esac
     done
 }
-
 
 find_compose_file() {
     local dir="$1"
@@ -118,14 +118,13 @@ expand_shortcut_args() {
 list_apps() {
     [[ -d "$DAPP_DIR" ]] || (err "folder does not exist, ${DAPP_DIR} "; return 1)
 
-    # [ $# -eq 1 ] && echo "--- Available Docker Apps in ${DAPP_DIR} --- (use -h for help)"
-
     local dir
     local -a apps=()
 
     # Gather matching directories
     for dir in "$DAPP_DIR"/*; do
         [[ -d "$dir" ]] || continue
+
         if find_compose_file "$dir" >/dev/null 2>&1; then
             apps+=( "$(basename "$dir")" )
         fi
@@ -217,14 +216,13 @@ ENVIRONMENT:
   DAPP_DIR                      Docker apps directory, $DAPP_DIR
   DAPP_EDITOR                   Editor for 'dapp APP edit', $DAPP_EDITOR
 
-For more info: https://github.com/neutralgit config user.email "YOUR_GITHUB_ID@users.noreply.github.com"
-git commit --amend --reset-author --no-edit
-git push -u origin main --force/dapp
+For more info: https://github.com/neutralvibes/dapp
 EOF
 }
 
 # Preprocess global flags like --yes/-y to support non-interactive modes
 NEW_ARGS=()
+
 for arg in "$@"; do
     case "$arg" in
         --yes|-y)
@@ -235,6 +233,7 @@ for arg in "$@"; do
             ;;
     esac
 done
+
 if [ "${#NEW_ARGS[@]}" -gt 0 ]; then
     set -- "${NEW_ARGS[@]}"
 else
@@ -279,7 +278,6 @@ set_dcd_target() {
         userhome=$(getent passwd "$user" | cut -d: -f6)
 
         if [[ -z $userhome ]]; then
-            # If empty
             err "User: $user has no home directory"
             return 1
         else
@@ -292,7 +290,7 @@ set_dcd_target() {
 set_dcd_var() {
         DCD_CMD="$(cat <<'EOF'
 dcd() { cd "$(dapp "$1" path)"; }
-# dcd autocompletion function
+
 _dcd_completions() {
     local curr_word="${COMP_WORDS[COMP_CWORD]}"
 
@@ -307,25 +305,23 @@ _dcd_completions() {
     fi
 }
 
-# Bind the completion function to 'dcd' command
 complete -F _dcd_completions dcd
 EOF
 )"
 }
 
 is_dcd_installed() {
-    # Returns:
-    #  1  installed
-    #  0  not
     local BRC="$_DCD_TARGET"
+    local m="dcd: present in ${BRC}"
 
     if grep -qF 'dcd() {' "$BRC"; then
-        echo "dcd present in ${BRC}"
+        echo "${m}, true"
         log "Existing dcd block found in $BRC"
+        return 0
+    else
+        echo "${m}, false"
         return 1
     fi
-
-    return 0
 }
 
 install_dcd() {
@@ -348,6 +344,7 @@ Otherwise select 'N' then:
 EOF
       )
     fi
+
     cat << EOF
 =========================================
 ==========   'dcd' Installer   ==========
@@ -369,8 +366,6 @@ EOF
         exit 1
     fi
 
-    # [ $? -ne 0 ] && echo "Aborting dcd installation" && exit 1
-
     if ! set_dcd_target; then
      exit 1
     fi
@@ -388,15 +383,14 @@ EOF
         }
     fi
 
-    # Check for an existing dcd function as a simple, robust marker
-
-    if ! is_dcd_installed; then
+    if is_dcd_installed; then
         exit 1
     fi
 
     log "Appending dcd function to $BRC"
     printf "%s\n" "" >> "$BRC"
     printf "%s\n" "$line" >> "$BRC"
+
     cat << EOF
 ✅ dcd function for $USER installed to $BRC
 
@@ -416,33 +410,31 @@ uninstall_dcd() {
         user=$1
     fi
 
-    echo "Checking if dcd installed for user, $user"
-
     if ! set_dcd_target "$user"; then
         return 1
     fi
 
     local BRC="$_DCD_TARGET"
 
+    echo "dcd: Checking if installed for user, $user"
+
     if [[ -f "$BRC" ]]; then
 
-        if is_dcd_installed; then
-
-            echo "dcd NOT installed in ${BRC}"
-            # Fallback: if the current HOME file differs and exists, try removing there too
-            if [[ "$BRC" != "$HOME/.bashrc" && -f "$HOME/.bashrc" ]]; then
-                log "Attempting fallback removal from $HOME/.bashrc"
-                sed -i '/^dcd() {/,/complete -F _dcd_completions dcd/d' "$HOME/.bashrc" || true
-                echo "Fallback: attempted removal from $HOME/.bashrc"
-            fi
+        if ! is_dcd_installed; then
             return
         fi
 
         log "Removing dcd block from $BRC"
-        sed -i '/^dcd() {/,/complete -F _dcd_completions dcd/d' "$BRC" || true
-        echo "✅ dcd function removed for $user from $BRC, user must logout to complete."
+
+        if ! sed -i '/^dcd() {/,/complete -F _dcd_completions dcd/d' "$BRC";
+        then
+            err "dcd: Removal failure"
+            exit 1
+        fi
+
+        echo "✅ dcd: Function removed for $user, user must logout to complete."
     else
-        err "User $user does not have dcd installed in $BRC"
+        err "dcd: Not installed for user, in $BRC"
     fi
 }
 
@@ -570,12 +562,14 @@ get_dapp_install_target() {
     echo "${DAPP_INSTALL_TARGET:-/usr/local/bin/dapp}"
 }
 
+
 install_self() {
     local target
     target="$(get_dapp_install_target)"
 
     local completion_dir
     completion_dir="${DAPP_COMPLETION_DIR:-/usr/share/bash-completion/completions}"
+
     local src
 
     # allow non-root installs for testing via DAPP_ALLOW_USER_INSTALL=1
@@ -587,11 +581,26 @@ install_self() {
 
     src="$(readlink -f "$0" 2>/dev/null || realpath "$0" 2>/dev/null || echo "$0")"
 
-    mkdir -p "$(dirname "$target")"
-    ln -sfn "$src" "$target"
-    mkdir -p "$completion_dir"
+    if ! mkdir -p "$(dirname "$target")"; then
+        err "Unable to create,  $(dirname "$target")"
+        exit 1
+    fi
 
-    "$target" --autocomplete | tee "$completion_dir/dapp" >/dev/null || true
+    if ! ln -sfn "$src" "$target"; then
+        err "Unable to link, $src->$target"
+        exit 1
+    fi
+
+    if ! mkdir -p "$completion_dir"; then
+        err "Unable to create,  $src->$target"
+        exit 1
+    fi
+
+    # Run 'dapp --autocomplete' then place code in completion folder
+    if ! "$target" --autocomplete | tee "$completion_dir/dapp" >/dev/null; then
+        err "Autocomplete registration failed"
+        exit 1
+    fi
 
     cat << EOF
 ✅ dapp installed to $target
@@ -626,6 +635,7 @@ uninstall_self() {
 
     # remove dcd installations first
     uninstall_dcd
+
     if [[ -n "${SUDO_USER:-}" ]]; then
         uninstall_dcd "$SUDO_USER"
     fi
@@ -637,17 +647,17 @@ uninstall_self() {
     target="$(get_dapp_install_target)"
     completion_dir="${DAPP_COMPLETION_DIR:-/usr/share/bash-completion/completions}"
 
-    rm -f "$target"
-    rm -f "$completion_dir/dapp"
+    if ! rm -f "$target"; then
+        err "dapp uninstall failed to remove, $target"
+        exit 1
+    fi
 
-    # set_dcd_var
+    if ! rm -f "$completion_dir/dapp"; then
+        err "Failed to remove completion code , $completion_dir/dapp"
+        exit 1
+    fi
 
-    # if [[ -f "$HOME/.bashrc" ]]; then
-    #     # Remove the dcd function block between the dcd() start and the completion binding
-    #     sed -i '/^dcd() {/,/complete -F _dcd_completions dcd/d' "$HOME/.bashrc" || true
-    # fi
-
-    echo "✅ dapp uninstall completed"
+    echo "✅ dapp uninstall completed successfully."
 }
 
 edit_app() {
@@ -718,7 +728,6 @@ esac
 
 # No param list apps
 if [[ $# -eq 0 ]]; then
-    # list_apps 0
     print_help
     exit 0
 fi
