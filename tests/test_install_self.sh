@@ -18,7 +18,7 @@ mkdir -p "$HOME"
 echo "Starting install test with TMPROOT=$TMPROOT"
 
 # Ensure paths are clean
-rm -rf "$TMPROOT/usr" "$TMPROOT/completions"
+rm -rf "${TMPROOT:?}/usr" "$TMPROOT/completions"
 
 # Run install
 bash "$DAPP_SCRIPT" --yes --install
