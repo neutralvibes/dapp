@@ -3,7 +3,7 @@
 [![CI](https://github.com/<owner>/<repo>/actions/workflows/ci.yml/badge.svg)](https://github.com/<owner>/<repo>/actions/workflows/ci.yml)
 
 
-A cmdline utility that wraps `docker compose` for managing multiple Docker applications, along with some short-cuts and full Docker Compose support,regardless of the actual folder you are in at the time.
+A `BASH` cmdline utility that wraps `docker compose` for managing multiple Docker applications, along with some short-cuts and full Docker Compose support,regardless of the actual folder you are in at the time.
 
 ## Overview
 
