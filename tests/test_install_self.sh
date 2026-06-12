@@ -36,6 +36,9 @@ if [[ -f "$DAPP_COMPLETION_DIR/dapp" ]]; then
     if grep -q "_dapp_completions" "$DAPP_COMPLETION_DIR/dapp"; then
         echo "INSTALL: completion installed"
     else
+        echo "----> cat $DAPP_COMPLETION_DIR/dapp"
+        cat "$DAPP_COMPLETION_DIR/dapp"
+        echo "----"
         echo "INSTALL: completion file missing expected content" >&2
         exit 3
     fi
