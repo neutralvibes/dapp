@@ -269,22 +269,20 @@ EOF
 
 set_dcd_target() {
     local fn='.bashrc'
+    local user="${1:-$USER}"
+    local userhome
 
-    if (( $# == 0 )); then
-        _DCD_TARGET="$HOME/${DCD_FILE:-$fn}"
+    if [[ "$user" == "$USER" ]]; then
+        userhome="$HOME"
     else
-        local user=$1
-        local userhome
         userhome=$(getent passwd "$user" | cut -d: -f6)
-
-        if [[ -z $userhome ]]; then
+        if [[ -z "$userhome" ]]; then
             err "User: $user has no home directory"
             return 1
-        else
-            _DCD_TARGET="$userhome/${DCD_FILE:-$fn}"
         fi
     fi
 
+    _DCD_TARGET="$userhome/${DCD_FILE:-$fn}"
 }
 
 set_dcd_var() {
@@ -325,6 +323,14 @@ is_dcd_installed() {
 }
 
 install_dcd() {
+    if ! set_dcd_target; then
+     exit 1
+    fi
+
+    if is_dcd_installed; then
+        exit 1
+    fi
+
     if (( EUID == 0 )); then
       local inject
       inject=$(cat << 'EOF'
@@ -350,8 +356,6 @@ EOF
 ==========   'dcd' Installer   ==========
 =========================================
 
-    dcd APP           cd to DAPP_DIR/APP
-
 EXAMPLES:
     dcd nginx           cd to DAPP_DIR/nginx
 
@@ -366,10 +370,6 @@ EOF
         exit 1
     fi
 
-    if ! set_dcd_target; then
-     exit 1
-    fi
-
     set_dcd_var
 
     local line="$DCD_CMD"
@@ -381,10 +381,6 @@ EOF
             echo "$BRC cannot be created, installation failed"
             exit 1
         }
-    fi
-
-    if is_dcd_installed; then
-        exit 1
     fi
 
     log "Appending dcd function to $BRC"
@@ -401,18 +397,9 @@ EOF
 }
 
 uninstall_dcd() {
-    local user
+    local user="${1:-$USER}"
 
-    if [ $# -eq 0 ]; then
-        user=$USER
-    else
-        # If user supplied set target to users installation
-        user=$1
-    fi
-
-    if ! set_dcd_target "$user"; then
-        return 1
-    fi
+    set_dcd_target "$user"
 
     local BRC="$_DCD_TARGET"
 
@@ -605,16 +592,16 @@ install_self() {
     cat << EOF
 ✅ dapp installed to $target
 
-Default uses '/opt/dapps' (DAPP_DIR) as parent for appication sub-folders
+Default uses DAPP_DIR='/opt/dapps' as parent for appication sub-folders
 
-    (sudo) nano '/opt/dapp_cmd/.config'     # To confiure 'DAPP_DIR' if differs
+    Edit the '/opt/dapp_cmd/.config'     # To confiure 'DAPP_DIR' if differs
 
-'dapp' usage:
+USAGE:
     dapp -h                     For further info
-    dapp --apps-folder          To see configured parent folder
+    dapp --apps-folder          Configured parent folder (via 'DAPP_DIR')
 
 
-Consider 'dcd' for a quick 'cd' to an apps folder.
+CONSIDER 'dcd' for a quick 'cd' to an apps folder.
 
     dcd niginx                  cd to DAPP_DIR/nginx
 
