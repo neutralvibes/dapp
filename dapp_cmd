@@ -563,9 +563,10 @@ get_completion_dir() {
 
     if [[ "${DAPP_ALLOW_USER_INSTALL:-}" == "1" ]]; then
         echo "${XDG_DATA_HOME:-$HOME/.local/share}/bash-completion/completions"
-    else
-        echo "/usr/share/bash-completion/completions"
+        return
     fi
+
+    echo "/usr/share/bash-completion/completions"
 }
 
 install_self() {
@@ -603,8 +604,8 @@ install_self() {
 
     # Run 'dapp --autocomplete' then place code in completion folder
     if ! "$target" --autocomplete | tee "$completion_dir/dapp" >/dev/null; then
-        err "Autocomplete registration failed"
-        exit 1
+        err "Warning: Autocomplete registration failed; continuing without completion."
+        err "Check permissions for $completion_dir or set DAPP_COMPLETION_DIR to a writable path."
     fi
 
     cat << EOF
