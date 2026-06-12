@@ -32,7 +32,7 @@ fi
 DAPP_DIR="${DAPP_DIR:-/opt/dapps}"
 DAPP_SELF_UPDATE_URL="${DAPP_SELF_UPDATE_URL:-https://raw.githubusercontent.com/<owner>/<repo>/main/dapp_cmd}"
 
-ORIG_CMD="$@"
+ORIG_CMD=("$*")
 ORIG_PARAM="$0"
 
 # Verbose logging if DAPP_VERBOSE=1
@@ -51,8 +51,8 @@ require_root() {
     if (( EUID != 0 )); then
         err 'This command must be run as root.\n'
         printf 'Try:\n'
-        printf '\tsudo %q' "$(basename $ORIG_PARAM)"
-        printf ' %q' "$ORIG_CMD"
+        printf '\tsudo %q' "$(basename "{$ORIG_PARAM}")"
+        printf ' %q' "${ORIG_CMD[0]}"
         printf '\n'
         exit 1
     fi
@@ -67,16 +67,10 @@ yn_answer() {
        return 0
    fi
    while true; do
-        read -p "$1 (Y/N) [N] ? " answer
+        read -rp "$1 (Y/N) [N] ? " answer
         case "$answer" in
-            [yY])
-                return 0
-                break
-                ;;
-            *)
-                return 1
-                break
-                ;;
+            [yY]) return 0 ;;
+            *) return 1 ;;
         esac
     done
 }
@@ -124,7 +118,7 @@ expand_shortcut_args() {
 list_apps() {
     [[ -d "$DAPP_DIR" ]] || (err "folder does not exist, ${DAPP_DIR} "; return 1)
 
-    [ $# -eq 1 ] && echo "--- Available Docker Apps in ${DAPP_DIR} --- (use -h for help)"
+    # [ $# -eq 1 ] && echo "--- Available Docker Apps in ${DAPP_DIR} --- (use -h for help)"
 
     local dir
     local -a apps=()
@@ -281,7 +275,8 @@ set_dcd_target() {
         _DCD_TARGET="$HOME/${DCD_FILE:-$fn}"
     else
         local user=$1
-        local userhome=$(getent passwd $user | cut -d: -f6)
+        local userhome
+        userhome=$(getent passwd "$user" | cut -d: -f6)
 
         if [[ -z $userhome ]]; then
             # If empty
@@ -293,13 +288,6 @@ set_dcd_target() {
     fi
 
 }
-
-# get_dcd_target() {
-#     local account={$1:-$USER}
-#     # Grab home dir from account
-#     local dir=$(getent passwd $account | cut -d: -f6)
-#     echo "$dir/${DCD_FILE:-'.bashrc'}"
-# }
 
 set_dcd_var() {
         DCD_CMD="$(cat <<'EOF'
@@ -342,7 +330,8 @@ is_dcd_installed() {
 
 install_dcd() {
     if (( EUID == 0 )); then
-      local inject=`cat << 'EOF'
+      local inject
+      inject=$(cat << 'EOF'
 
 ---------------------- WARNING! ------------------
 -- You are installing under 'root' (maybe sudo) --
@@ -356,7 +345,8 @@ Otherwise select 'N' then:
     dapp --install-dcd          # for your user.
 
 .
-EOF`
+EOF
+      )
     fi
     cat << EOF
 =========================================
@@ -373,12 +363,17 @@ EXAMPLES:
 The 'dcd' function is injected into a user '.bashrc' file.
 ${inject:-}
 EOF
-    yn_answer "Install 'dcd' command"
 
-    [ $? -ne 0 ] && echo "Aborting dcd installation" && exit 1
+    if ! yn_answer "Install 'dcd' command"; then
+        echo "Aborting dcd installation"
+        exit 1
+    fi
 
-    set_dcd_target
-    [ $? -ne 0 ] && exit 1
+    # [ $? -ne 0 ] && echo "Aborting dcd installation" && exit 1
+
+    if ! set_dcd_target; then
+     exit 1
+    fi
 
     set_dcd_var
 
@@ -394,9 +389,8 @@ EOF
     fi
 
     # Check for an existing dcd function as a simple, robust marker
-    is_dcd_installed
 
-    if [ $? -eq 1 ]; then
+    if ! is_dcd_installed; then
         exit 1
     fi
 
@@ -424,16 +418,16 @@ uninstall_dcd() {
 
     echo "Checking if dcd installed for user, $user"
 
-    set_dcd_target $user
-    [ $? -ne 0 ] && return 1
+    if ! set_dcd_target "$user"; then
+        return 1
+    fi
 
     local BRC="$_DCD_TARGET"
 
     if [[ -f "$BRC" ]]; then
 
-        is_dcd_installed
+        if is_dcd_installed; then
 
-        if [ $? -eq 0 ]; then
             echo "dcd NOT installed in ${BRC}"
             # Fallback: if the current HOME file differs and exists, try removing there too
             if [[ "$BRC" != "$HOME/.bashrc" && -f "$HOME/.bashrc" ]]; then
@@ -577,8 +571,11 @@ get_dapp_install_target() {
 }
 
 install_self() {
-    local target="$(get_dapp_install_target)"
-    local completion_dir="${DAPP_COMPLETION_DIR:-/usr/share/bash-completion/completions}"
+    local target
+    target="$(get_dapp_install_target)"
+
+    local completion_dir
+    completion_dir="${DAPP_COMPLETION_DIR:-/usr/share/bash-completion/completions}"
     local src
 
     # allow non-root installs for testing via DAPP_ALLOW_USER_INSTALL=1
@@ -634,8 +631,11 @@ uninstall_self() {
     fi
 
     # Now remove dapp
-    local target="$(get_dapp_install_target)"
-    local completion_dir="${DAPP_COMPLETION_DIR:-/usr/share/bash-completion/completions}"
+    local target
+    local completion_dir
+
+    target="$(get_dapp_install_target)"
+    completion_dir="${DAPP_COMPLETION_DIR:-/usr/share/bash-completion/completions}"
 
     rm -f "$target"
     rm -f "$completion_dir/dapp"
@@ -709,7 +709,7 @@ case "${1:-}" in
     --self-update) self_update; exit 0 ;;
     --autocomplete) print_dapp_autocomplete; exit 0 ;;
     --list-apps) list_apps; exit 0 ;;
-    --apps-folder) echo $DAPP_DIR; exit 0 ;;
+    --apps-folder) echo "$DAPP_DIR"; exit 0 ;;
     -v) echo "dapp version ${DAPP_VERSION}"; exit 0 ;;
     -h|--help) print_help; exit 0 ;;
     ls) list_apps; exit 0 ;;
