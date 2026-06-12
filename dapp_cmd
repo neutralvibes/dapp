@@ -546,16 +546,34 @@ self_update() {
 }
 
 get_dapp_install_target() {
-    echo "${DAPP_INSTALL_TARGET:-/usr/local/bin/dapp}"
+    if [[ -n "${DAPP_INSTALL_TARGET:-}" ]]; then
+        echo "$DAPP_INSTALL_TARGET"
+    elif [[ "${DAPP_ALLOW_USER_INSTALL:-}" == "1" ]]; then
+        echo "${HOME}/.local/bin/dapp"
+    else
+        echo "/usr/local/bin/dapp"
+    fi
 }
 
+get_completion_dir() {
+    if [[ -n "${DAPP_COMPLETION_DIR:-}" ]]; then
+        echo "$DAPP_COMPLETION_DIR"
+        return
+    fi
+
+    if [[ "${DAPP_ALLOW_USER_INSTALL:-}" == "1" ]]; then
+        echo "${XDG_DATA_HOME:-$HOME/.local/share}/bash-completion/completions"
+    else
+        echo "/usr/share/bash-completion/completions"
+    fi
+}
 
 install_self() {
     local target
     target="$(get_dapp_install_target)"
 
     local completion_dir
-    completion_dir="${DAPP_COMPLETION_DIR:-/usr/share/bash-completion/completions}"
+    completion_dir="$(get_completion_dir)"
 
     local src
 
@@ -579,7 +597,7 @@ install_self() {
     fi
 
     if ! mkdir -p "$completion_dir"; then
-        err "Unable to create,  $src->$target"
+        err "Unable to create completion directory, $completion_dir"
         exit 1
     fi
 
@@ -632,7 +650,7 @@ uninstall_self() {
     local completion_dir
 
     target="$(get_dapp_install_target)"
-    completion_dir="${DAPP_COMPLETION_DIR:-/usr/share/bash-completion/completions}"
+    completion_dir="$(get_completion_dir)"
 
     if ! rm -f "$target"; then
         err "dapp uninstall failed to remove, $target"
