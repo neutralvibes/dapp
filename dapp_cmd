@@ -1,5 +1,20 @@
 #!/usr/bin/env bash
 
+#=============================================================
+# AUTHOR: neutralvibes
+# ORIGIN: https://github.com/neutralvibes/dapp
+#=============================================================
+# DISCLAIMER:
+#
+# This script is an independent third-party tool.
+# It is NOT affiliated with, endorsed by, or connected to Docker, Inc.
+# Docker is a trademark of Docker, Inc.
+
+# This script is provided "AS IS" without warranty of any kind.
+# The author assumes no liability for data loss or damage.
+# Test thoroughly in a non-production environment before use.
+#=============================================================
+
 set -u
 set -o pipefail
 
@@ -25,7 +40,8 @@ if [[ -f "$DAPP_CONFIG_FILE" ]]; then
     while IFS='=' read -r key value; do
         case "$key" in
             DAPP_DIR| \
-            DAPP_EDITOR)
+            DAPP_EDITOR| \
+            DAPP_LIST_SAFE)
                 # Only set if not already set
                 if [[ -z "${!key:-}" ]]; then
                     printf -v "$key" "%s" "$(cfg_value "$value")"
@@ -145,6 +161,225 @@ list_apps() {
     fi
 }
 
+get_all_apps() {
+    local dir
+    local -a apps=()
+
+    [[ -d "$DAPP_DIR" ]] || return 0
+
+    for dir in "$DAPP_DIR"/*; do
+        [[ -d "$dir" ]] || continue
+
+        if find_compose_file "$dir" >/dev/null 2>&1; then
+            apps+=( "$(basename "$dir")" )
+        fi
+    done
+
+    printf '%s\n' "${apps[@]}"
+}
+
+normalize_whitelist() {
+    local value="$1"
+    value="${value//$'\r'/}"
+    value="${value//$'\n'/;}"
+    echo "$value"
+}
+
+is_list_safe() {
+    local cmdline="$*"
+    local safe
+
+    safe="$(normalize_whitelist "${DAPP_LIST_SAFE:-}")"
+    if [[ -z "$safe" ]]; then
+        safe="ps;up -d;down;restart;pull;start;stop;logs -f;top"
+    fi
+
+    local IFS=';'
+    local pattern
+    for pattern in $safe; do
+        pattern="${pattern#"${pattern%%[![:space:]]*}"}"
+        pattern="${pattern%"${pattern##*[![:space:]]}"}"
+        [[ -z "$pattern" ]] && continue
+
+        if [[ "$cmdline" == "$pattern" || "$cmdline" == "$pattern "* ]]; then
+            return 0
+        fi
+    done
+
+    return 1
+}
+
+list_help() {
+    cat <<EOF
+List operations:
+
+These work on the selected APP folders under the DAPP_DIR parent.
+
+  dapp @all COMMAND [ARGS]                          Run on all APPS
+  dapp @list=APP1,APP2,APP3 COMMAND [ARGS]          Run on named APPS
+  dapp @list-file=/path/to/file COMMAND [ARGS]      Run on named APPS in file
+  dapp @save-status stopped PATH_TO_FILE            Save stopped APPS to file
+  dapp @save-status running PATH_TO_FILE            Save running APPS to file
+  dapp @list-help                                   Print this help
+
+DAPP_LIST_SAFE:
+    Semicolon-separated whitelist of allowed list commands.
+    Defaults are set in '.config' file.
+    Can be overriden by environment variable.
+
+Current whitelist:
+EOF
+    local safe
+    safe="$(normalize_whitelist "${DAPP_LIST_SAFE:-ps;up -d;down;restart;pull;start;stop}")"
+    local IFS=';'
+    local pattern
+    for pattern in $safe; do
+        pattern="${pattern#"${pattern%%[![:space:]]*}"}"
+        pattern="${pattern%"${pattern##*[![:space:]]}"}"
+        [[ -n "$pattern" ]] && printf '  %s\n' "$pattern"
+    done
+}
+
+parse_app_list() {
+    local list="$1"
+    local app
+    local IFS=','
+    read -ra apps <<< "$list"
+    for app in "${apps[@]}"; do
+        app="${app#"${app%%[![:space:]]*}"}"
+        app="${app%"${app##*[![:space:]]}"}"
+        [[ -n "$app" ]] && printf '%s\n' "$app"
+    done
+}
+
+read_apps_from_file() {
+    local path="$1"
+    if [[ "$path" != /* ]]; then
+        path="$PWD/$path"
+    fi
+    if [[ ! -f "$path" ]]; then
+        err "List file not found: $path"
+        exit 1
+    fi
+    local app
+    while IFS= read -r app; do
+        app="${app#"${app%%[![:space:]]*}"}"
+        app="${app%"${app##*[![:space:]]}"}"
+        [[ -z "$app" || "$app" == \#* ]] && continue
+        printf '%s\n' "$app"
+    done < "$path"
+}
+
+get_apps_for_list_source() {
+    local source="$1"
+    case "$source" in
+        @all)
+            get_all_apps
+            ;;
+        @list=*)
+            parse_app_list "${source#@list=}"
+            ;;
+        @list-file:*)
+            read_apps_from_file "${source#@list-file:}"
+            ;;
+        @list-file=*)
+            read_apps_from_file "${source#@list-file=}"
+            ;;
+        *)
+            return 1
+            ;;
+    esac
+}
+
+run_list_command() {
+    local source="$1"
+    shift
+    local cmd="$1"
+    shift
+    if [[ -z "$cmd" ]]; then
+        err "Missing COMMAND for list operation"
+        exit 1
+    fi
+    expand_shortcut_args "$cmd" "$@"
+    local list_command
+    list_command="${SHORTCUT_ARGS[*]}"
+    if ! is_list_safe "$list_command"; then
+        err "Command not allowed for list operations: $list_command"
+        err "Allowed operations are listed in DAPP_LIST_SAFE"
+        exit 1
+    fi
+    local -a apps=()
+    mapfile -t apps < <(get_apps_for_list_source "$source")
+    if [[ ${#apps[@]} -eq 0 ]]; then
+        err "No apps found for $source"
+        exit 1
+    fi
+    require_compose
+    local rc=0
+    local app
+
+    for app in "${apps[@]}"; do
+        local app_dir="$DAPP_DIR/$app"
+        if [[ ! -d "$app_dir" ]]; then
+            err "Docker App '$app' not found under $DAPP_DIR"
+            rc=1
+            continue
+        fi
+        local compose_file
+        compose_file="$(find_compose_file "$app_dir")" || {
+            err "No compose file found in $app_dir"
+            rc=1
+            continue
+        }
+        echo "==== $app ===="
+        "${compose_cmd[@]}" -f "$app_dir/$compose_file" "${SHORTCUT_ARGS[@]}" || rc=1
+        echo -e "\n"
+    done
+    return "$rc"
+}
+
+save_status_to_file() {
+    local target_status="$1"
+    local output_file="$2"
+    if [[ -z "$target_status" || -z "$output_file" ]]; then
+        err "Usage: dapp @save-status (running|stopped) PATH_TO_FILE"
+        exit 1
+    fi
+    if [[ "$target_status" != "running" && "$target_status" != "stopped" ]]; then
+        err "Unsupported status '$target_status'. Use 'running' or 'stopped'."
+        exit 1
+    fi
+    local path="$output_file"
+    if [[ "$path" != /* ]]; then
+        path="$PWD/$path"
+    fi
+    mkdir -p "$(dirname "$path")" || {
+        err "Unable to create directory for $path"
+        exit 1
+    }
+    : > "$path"
+    require_compose
+    local app
+    local status
+    local app_dir
+    local compose_file
+    local -a apps=()
+    mapfile -t apps < <(get_all_apps)
+    for app in "${apps[@]}"; do
+        app_dir="$DAPP_DIR/$app"
+        compose_file="$(find_compose_file "$app_dir")" || continue
+        if "${compose_cmd[@]}" -f "$app_dir/$compose_file" ps -q 2>/dev/null | grep -q .; then
+            status="running"
+        else
+            status="stopped"
+        fi
+        if [[ "$status" == "$target_status" ]]; then
+            printf '%s\n' "$app" >> "$path"
+        fi
+    done
+    echo "Saved apps with status '$target_status' to $path"
+}
+
 print_help() {
 cat <<EOF
 dapp - docker compose wrapper
@@ -200,6 +435,13 @@ OPTIONS:
   --apps-folder                 Show the configured DAPP_DIR
   --list-apps                   List available apps (shortcut above)
 
+  @all COMMAND [ARGS]           Run a whitelisted command against every app
+  @list=APP1,APP2               Run a whitelisted command against apps in a list
+  @list-file=/path/to/file      Run a whitelisted command against apps from a file
+  @save-status running file     Save running app names to a file
+  @save-status stopped file     Save stopped app names to a file
+  @list-help                    Show list operation usage and whitelist
+
   --install                     Install globally with bash completion
   --uninstall                   Uninstall from system
   --install-dcd                 Install the dcd helper function into ~/.bashrc
@@ -221,6 +463,7 @@ EXAMPLES:
 ENVIRONMENT:
   DAPP_DIR                      Docker apps directory, $DAPP_DIR
   DAPP_EDITOR                   Editor for 'dapp APP edit', $DAPP_EDITOR
+  DAPP_LIST_SAFE                Whitelistfor list operations
 
 For more info: https://github.com/neutralvibes/dapp
 EOF
@@ -250,15 +493,28 @@ print_dapp_autocomplete() {
 cat <<'EOF'
 _dapp_completions() {
     local curr="${COMP_WORDS[COMP_CWORD]}"
+    local prev="${COMP_WORDS[COMP_CWORD-1]}"
 
     if [[ "$COMP_CWORD" -eq 1 ]]; then
         COMPREPLY=(
-            $(compgen -W "$(dapp --list-apps) ls status" -- "$curr")
+            $(compgen -W "$(dapp --list-apps) ls status @all @list= @list-file= @save-status @list-help -v -h --help --list-apps --apps-folder --autocomplete --install --uninstall --install-dcd --uninstall-dcd --self-update --yes" -- "$curr")
         )
         return
     fi
 
     if [[ "$COMP_CWORD" -eq 2 ]]; then
+        if [[ "$prev" == "@save-status" ]]; then
+            COMPREPLY=( $(compgen -W "running stopped" -- "$curr") )
+            return
+        fi
+
+        if [[ "$prev" == @all || "$prev" == @list=* || "$prev" == @list-file:* || "$prev" == @list-file=* ]]; then
+            COMPREPLY=(
+                $(compgen -W "ps up down restart start stop logs pull build config exec top images u d l r" -- "$curr")
+            )
+            return
+        fi
+
         COMPREPLY=(
             $(compgen -W "path edit ps up down restart start stop logs pull build config exec top images u d l r" -- "$curr")
         )
@@ -712,7 +968,28 @@ edit_app() {
     "${DAPP_EDITOR:-nano}" "$dir/$compose"
 }
 
+require_compose() {
+    if [[ -n "${compose_cmd[*]:-}" ]]; then
+        return 0
+    fi
+
+    if docker compose version >/dev/null 2>&1; then
+        compose_cmd=(docker compose)
+        return 0
+    fi
+
+    if docker-compose version >/dev/null 2>&1; then
+        compose_cmd=(docker-compose)
+        return 0
+    fi
+
+    err "Docker Compose not found"
+    exit 1
+}
+
 status_all() {
+    require_compose
+
     printf "%-25s %s\n" "APP" "STATUS"
 
     local app
@@ -723,7 +1000,7 @@ status_all() {
 
         compose="$(find_compose_file "$dir")" || continue
 
-        if docker compose -f "$dir/$compose" ps -q 2>/dev/null | grep -q .; then
+        if "${compose_cmd[@]}" -f "$dir/$compose" ps -q 2>/dev/null | grep -q .; then
             printf "%-25s running\n" "$app"
         else
             printf "%-25s stopped\n" "$app"
@@ -731,19 +1008,19 @@ status_all() {
     done < <(list_apps)
 }
 
-detect_compose() {
-    if docker compose version >/dev/null 2>&1; then
-        echo "docker compose"
-        return 0
-    fi
+# detect_compose() {
+#     if docker compose version >/dev/null 2>&1; then
+#         echo "docker compose"
+#         return 0
+#     fi
 
-    if docker-compose version >/dev/null 2>&1; then
-        echo "docker-compose"
-        return 0
-    fi
+#     if docker-compose version >/dev/null 2>&1; then
+#         echo "docker-compose"
+#         return 0
+#     fi
 
-    return 1
-}
+#     return 1
+# }
 
 case "${1:-}" in
     --install) install_self; exit 0 ;;
@@ -758,6 +1035,15 @@ case "${1:-}" in
     -h|--help) print_help; exit 0 ;;
     ls) list_apps; exit 0 ;;
     status) status_all; exit 0 ;;
+    @list-help) list_help; exit 0 ;;
+    @all|@list=*|@list-file:*|@list-file=*)
+        run_list_command "$1" "${@:2}"
+        exit $?
+        ;;
+    @save-status)
+        save_status_to_file "${2:-}" "${3:-}"
+        exit $?
+        ;;
 esac
 
 # No param list apps
@@ -766,11 +1052,6 @@ if [[ $# -eq 0 ]]; then
     exit 0
 fi
 
-compose_cmd="$(detect_compose)" || {
-    err "Docker Compose not found"
-    exit 1
-}
-
 # Local mode
 if find_compose_file "$PWD" >/dev/null 2>&1; then
     if [[ ! -d "$DAPP_DIR/$1" ]]; then
@@ -778,7 +1059,8 @@ if find_compose_file "$PWD" >/dev/null 2>&1; then
         set -- "${SHORTCUT_ARGS[@]}"
 
         compose_file="$(find_compose_file "$PWD")"
-        $compose_cmd -f "$compose_file" "$@"
+        require_compose
+        "${compose_cmd[@]}" -f "$compose_file" "$@"
         exit $?
     fi
 fi
@@ -809,7 +1091,8 @@ set -- "$app" "${SHORTCUT_ARGS[@]}"
 
 pushd "$app_dir" >/dev/null || exit 1
 
-$compose_cmd \
+require_compose
+"${compose_cmd[@]}" \
     -f "$compose_file" \
     "$cmd" \
     "${@:3}"

@@ -21,7 +21,33 @@ echo "Running dapp install/uninstall test..."
 echo "Running autocomplete output test..."
 ./tests/test_autocomplete.sh
 
+check_compose() {
+    if command -v docker >/dev/null 2>&1 && docker compose version >/dev/null 2>&1; then
+        return 0
+    fi
+
+    if command -v docker-compose >/dev/null 2>&1 && docker-compose version >/dev/null 2>&1; then
+        return 0
+    fi
+
+    return 1
+}
+
+SKIP_LIST_REASON=""
+if check_compose; then
+    echo "Running list operations test..."
+    ./tests/test_list_operations.sh
+else
+    SKIP_LIST_REASON="Docker Compose not available"
+    echo "SKIP: ${SKIP_LIST_REASON}, skipping list operations test."
+fi
+
 echo "Running basic flags test..."
 ./tests/test_flags.sh
 
 echo "All tests passed."
+
+if [[ -n "$SKIP_LIST_REASON" ]]; then
+    echo "NOTE: Some tests were skipped:"
+    echo "  list operations: $SKIP_LIST_REASON"
+fi
