@@ -229,6 +229,7 @@ DAPP_LIST_SAFE:
 
 Current whitelist:
 EOF
+    trap '' PIPE  # CI tests may read output early; ignore broken pipe errors
     local safe
     safe="$(normalize_whitelist "${DAPP_LIST_SAFE:-ps;up -d;down;restart;pull;start;stop}")"
     local IFS=';'
@@ -238,6 +239,8 @@ EOF
         pattern="${pattern%"${pattern##*[![:space:]]}"}"
         [[ -n "$pattern" ]] && printf '  %s\n' "$pattern"
     done
+    
+    trap - PIPE
 }
 
 parse_app_list() {

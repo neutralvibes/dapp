@@ -32,7 +32,7 @@ export DAPP_DIR="$TMPROOT/opt/dapps"
 bash "$DAPP_SCRIPT" --yes --install >/dev/null
 
 # Set a safe whitelist for list operations
-export DAPP_LIST_SAFE="ps;up -d;down;restart;logs -f"
+export DAPP_LIST_SAFE="ps;up -d;down;restart;logs"
 
 # Validate @list-help output
 if ! bash "$DAPP_SCRIPT" @list-help | grep -q 'Current whitelist:'; then
