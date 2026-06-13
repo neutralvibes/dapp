@@ -1,9 +1,8 @@
 # dapp - Docker compose wrapper
 
-[![CI](https://github.com/<owner>/<repo>/actions/workflows/ci.yml/badge.svg)](https://github.com/<owner>/<repo>/actions/workflows/ci.yml)
+[![CI](https://github.com/neutralvibes/dapp/actions/workflows/ci.yml/badge.svg)](https://github.com/neutralvibes/dapp/actions/workflows/ci.yml)
 
-
-A `BASH` cmdline utility that wraps `docker compose` for managing multiple Docker applications, along with some short-cuts and full Docker Compose support,regardless of the actual folder you are in at the time.
+A `BASH` command line utility that wraps `docker compose` for managing multiple Docker applications, along with some short-cuts and full Docker Compose support,regardless of the actual folder you are in at the time.
 
 ## Overview
 
@@ -11,7 +10,7 @@ While in a galaxy far far away with a keyboard, I yearned to speed up my docker 
 
 ### dapp
 
-`dapp` is a wrapper around `docker compose` for cmdline warriors. It lets you easily manage multiple Docker applications located under a central parent folder; providing short-cuts, app auto-completion and a convenient speedy CLI for most Docker Compose operations.
+`dapp` is a wrapper around `docker compose` for command line warriors. It lets you easily manage multiple Docker applications located under a central parent folder; providing short-cuts, app auto-completion and a convenient speedy CLI for most Docker Compose operations.
 
 #### How it works
 
@@ -57,9 +56,7 @@ dcd ng[TAB]        # Completes 'nginx' sub-folder name
 ```
 
 ---
-These utilities have saved me oddles of time and perhaps you may find them useful too.
-
----
+These utilities have saved me huge amounts of time and perhaps you may find them useful too.
 
 ## Usage
 
@@ -163,7 +160,6 @@ dapp --install-dcd
 If you want `root` to access `dcd` as well, run with `sudo`.
 
 ## Configuration
-
 
 | `/opt/dapps_cmd/.config`
 
@@ -347,7 +343,6 @@ The `.config` file located in `/opt/dapp_cmd` provides the settings below.
 |---------------|--------------|--------------------------------|
 | `DAPP_DIR`    | `/opt/dapps` | Root directory for Docker apps |
 | `DAPP_EDITOR` | `nano`       | Editor used for `dapp APP edit`|
-
 
 **Example:**
 

@@ -11,26 +11,32 @@ DAPP_CONFIG_FILE="$SCRIPT_DIR/.config"
 
 DAPP_DIR="${DAPP_DIR:-}"
 
-# Assign recognised values from .config file
-if [[ -z "$DAPP_DIR" && -f "$DAPP_CONFIG_FILE" ]]; then
+cfg_value() {
+    local value="${1%\"}"
+    echo "${value#\"}"
+}
+
+#
+# Merge recognised values from .config file
+# ignoring those already set
+#
+if [[ -f "$DAPP_CONFIG_FILE" ]]; then
+
     while IFS='=' read -r key value; do
         case "$key" in
-            DAPP_DIR)
-                value="${value%\"}"
-                value="${value#\"}"
-                DAPP_DIR="$value"
-                ;;
+            DAPP_DIR| \
             DAPP_EDITOR)
-                value="${value%\"}"
-                value="${value#\"}"
-                DAPP_EDITOR="$value"
+                # Only set if not already set
+                if [[ -z "${!key:-}" ]]; then
+                    printf -v "$key" "%s" "$(cfg_value "$value")"
+                 fi
                 ;;
         esac
     done < "$DAPP_CONFIG_FILE"
 fi
 
 DAPP_DIR="${DAPP_DIR:-/opt/dapps}"
-DAPP_SELF_UPDATE_URL="${DAPP_SELF_UPDATE_URL:-https://raw.githubusercontent.com/<owner>/<repo>/main/dapp_cmd}"
+DAPP_SELF_UPDATE_URL="${DAPP_SELF_UPDATE_URL:-https://raw.githubusercontent.com/neutralvibes/dapp/main/dapp_cmd}"
 
 
 ORIG_CMD="$*"
@@ -406,11 +412,13 @@ EOF
     printf "%s\n" "$line" >> "$BRC"
 
     cat << EOF
-✅ dcd function for $USER installed to $BRC
 
 Logout/in to use
     OR
         source ~/.bashrc  # For immediate use
+
+
+✅ dcd function for user '$USER' installed to $BRC
 EOF
 }
 
@@ -439,7 +447,7 @@ uninstall_dcd() {
 
         echo "✅ dcd: Function removed for $user, user must logout to complete."
     else
-        info "dcd: Dependancy missing, $BRC"
+        echo "dcd: $user has no file, $BRC"
     fi
 }
 
@@ -503,6 +511,7 @@ version_compare() {
 
 self_update() {
     local url="${DAPP_SELF_UPDATE_URL:-}"
+
     if [[ -z "$url" || "$url" == *"<"* || "$url" == *">"* ]]; then
         err "DAPP_SELF_UPDATE_URL is not configured. Set it to the raw GitHub URL for this script."
         return 1
@@ -621,14 +630,12 @@ install_self() {
     fi
 
     # Run 'dapp --autocomplete' then place code in completion folder
-    echo "autocomple -> $completion_dir/dapp"
     if ! "$target" --autocomplete | tee "$completion_dir/dapp" >/dev/null; then
         err "Warning: Autocomplete registration failed; continuing without completion."
         err "Check permissions for $completion_dir or set DAPP_COMPLETION_DIR to a writable path."
     fi
 
     cat << EOF
-✅ dapp installed to $target
 
 Default uses DAPP_DIR='/opt/dapps' as parent for appication sub-folders
 
@@ -636,7 +643,7 @@ Default uses DAPP_DIR='/opt/dapps' as parent for appication sub-folders
 
 USAGE:
     dapp -h                     For further info
-    dapp --apps-folder          Configured parent folder (via 'DAPP_DIR')
+    dapp --apps-folder          Print configured parent folder (via 'DAPP_DIR')
 
 
 CONSIDER 'dcd' for a quick 'cd' to an apps folder.
@@ -646,6 +653,8 @@ CONSIDER 'dcd' for a quick 'cd' to an apps folder.
     Installation:
         dapp --install-dcd
 
+
+✅ dapp installed successfully.
 EOF
 
 }
