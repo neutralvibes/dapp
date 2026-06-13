@@ -35,19 +35,19 @@ bash "$DAPP_SCRIPT" --yes --install >/dev/null
 export DAPP_LIST_SAFE="ps;up -d;down;restart;logs"
 
 # Validate @list-help output
-if ! bash "$DAPP_SCRIPT" @list-help | grep -q 'Current whitelist:'; then
+if ! bash "$DAPP_SCRIPT" @list-help | grep -c 'Current whitelist:'; then
     echo "LIST-HELP: expected whitelist output" >&2
     exit 2
 fi
 
 # Validate @all simple command
-if ! bash "$DAPP_SCRIPT" @all ps | grep -q '==== app1 ===='; then
+if ! bash "$DAPP_SCRIPT" @all ps | grep -c '==== app1 ===='; then
     echo "LIST-ALL: expected app output for app1" >&2
     exit 3
 fi
 
 # Validate @list= selection
-if ! bash "$DAPP_SCRIPT" '@list=app2' ps | grep -q '==== app2 ===='; then
+if ! bash "$DAPP_SCRIPT" '@list=app2' ps | grep -c '==== app2 ===='; then
     echo "LIST-SELECT: expected app2 output" >&2
     exit 4
 fi
