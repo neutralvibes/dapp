@@ -24,8 +24,8 @@ fi
 
 mkdir -p "$TMPROOT/opt/dapps/app1"
 mkdir -p "$TMPROOT/opt/dapps/app2"
-printf 'version: "3"\nservices:\n  web:\n    image: nginx\n' > "$TMPROOT/opt/dapps/app1/compose.yml"
-printf 'version: "3"\nservices:\n  web:\n    image: nginx\n' > "$TMPROOT/opt/dapps/app2/compose.yml"
+printf 'services:\n  web:\n    image: nginx\n' > "$TMPROOT/opt/dapps/app1/compose.yml"
+printf 'services:\n  web:\n    image: nginx\n' > "$TMPROOT/opt/dapps/app2/compose.yml"
 export DAPP_DIR="$TMPROOT/opt/dapps"
 
 # install dapp to ensure run_list_command is callable
