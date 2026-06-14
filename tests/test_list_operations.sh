@@ -32,7 +32,7 @@ export DAPP_DIR="$TMPROOT/opt/dapps"
 bash "$DAPP_SCRIPT" --yes --install >/dev/null
 
 # Set a safe whitelist for list operations
-export DAPP_LIST_SAFE="ps;up -d;down;restart;logs"
+export DAPP_LIST_SAFE="ps; up -d; down; restart; noflag:(-f|--follow):logs"
 
 # Validate @list-help output
 if ! bash "$DAPP_SCRIPT" @list-help | grep -c 'Current whitelist:'; then
@@ -60,10 +60,30 @@ if [[ ! -f "$TMPROOT/stopped.txt" ]]; then
 fi
 
 # Validate invalid command blocked by whitelist
-if bash "$DAPP_SCRIPT" @all up | grep -q 'not allowed'; then
+if bash "$DAPP_SCRIPT" @all up | grep -c 'not allowed'; then
     echo "WHITELIST: expected invalid command rejection" >&2
     exit 6
 fi
+
+# Validate invalid shortcut command blocked by whitelist
+if bash "$DAPP_SCRIPT" @all lf | grep -c 'not allowed'; then
+    echo "WHITELIST: expected invalid command rejection" >&2
+    exit 7
+fi
+
+# Validate invalid command blocked by whitelist
+if bash "$DAPP_SCRIPT" @all logs --follow | grep -c 'not allowed'; then
+    echo "WHITELIST: expected invalid command rejection" >&2
+    exit 8
+fi
+
+
+# Validate invalid command blocked by whitelist
+if bash "$DAPP_SCRIPT" @all logs -f | grep -c 'not allowed'; then
+    echo "WHITELIST: expected invalid command rejection" >&2
+    exit 8
+fi
+
 
 # Cleanup
 rm -rf "$TMPROOT"

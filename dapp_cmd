@@ -56,7 +56,7 @@ DAPP_DIR="${DAPP_DIR:-/opt/dapps}"
 DAPP_RUN_MODE="${DAPP_RUN_MODE:-cd}"
 
 DAPP_SELF_UPDATE_URL="${DAPP_SELF_UPDATE_URL:-https://raw.githubusercontent.com/neutralvibes/dapp/main/dapp_cmd}"
-
+DAPP_APP_CFG=".dapp"
 
 ORIG_CMD="$*"
 ORIG_PARAM="$0"
@@ -190,27 +190,104 @@ normalize_whitelist() {
 
 is_list_safe() {
     local cmdline="$*"
-    local safe
 
-    safe="$(normalize_whitelist "${DAPP_LIST_SAFE:-}")"
-    if [[ -z "$safe" ]]; then
-        safe="ps;up -d;down;restart;pull;start;stop;logs -f;top"
-    fi
+    IFS=';' read -ra patterns <<< "${DAPP_LIST_SAFE-?}"
 
-    local IFS=';'
-    local pattern
-    for pattern in $safe; do
+    for pattern in "${patterns[@]}"; do
+        # Strip leading/trailing whitespace
         pattern="${pattern#"${pattern%%[![:space:]]*}"}"
         pattern="${pattern%"${pattern##*[![:space:]]}"}"
+
         [[ -z "$pattern" ]] && continue
 
-        if [[ "$cmdline" == "$pattern" || "$cmdline" == "$pattern "* ]]; then
-            return 0
+        # strict: Match only
+        if [[ "$pattern" == strict:* ]]; then
+            local actual_cmd="${pattern#strict:}"
+            if [[ "$cmdline" =~ ^${actual_cmd}$ ]]; then
+                return 0
+            fi
+
+        # noflag: Block-list ARGS
+        elif [[ "$pattern" == noflag:* ]]; then
+            local remainder="${pattern#noflag:}"
+            local banned_flags="${remainder%%:*}"
+            local actual_cmd="${remainder#*:}"
+
+            if [[ "$cmdline" =~ ^${actual_cmd}([[:space:]]|$) ]]; then
+                if [[ "$cmdline" =~ ([[:space:]]|^)${banned_flags}([[:space:]]|$) ]]; then
+                    continue
+                fi
+                return 0
+            fi
+
+        # flag: Allow-list / ONLY these flags
+        elif [[ "$pattern" == flag:* ]]; then
+            local remainder="${pattern#flag:}"
+            local allowed_flags="${remainder%%:*}"
+            local actual_cmd="${remainder#*:}"
+
+            if [[ "$cmdline" =~ ^${actual_cmd}([[:space:]]|$) ]]; then
+                local args="${cmdline#"$actual_cmd"}"
+
+                # no arguments left
+                [[ -z "${args//[[:space:]]/}" ]] && return 0
+
+                local safe=0
+                read -ra arg_list <<< "$args"
+                for arg in "${arg_list[@]}"; do
+                    if [[ "$arg" == -* ]]; then
+                        if [[ ! "$arg" =~ ^${allowed_flags}$ ]]; then
+                            safe=1 # Banned flag!
+                            break
+                        fi
+                    fi
+                done
+
+                if [[ $safe -eq 0 ]]; then
+                    return 0
+                fi
+            fi
+
+        # Basic Mode: cmd with any ARGS
+        else
+            if [[ "$cmdline" =~ ^${pattern}([[:space:]]|$) ]]; then
+                return 0
+            fi
         fi
     done
 
     return 1
 }
+
+# is_list_safe() {
+#     local cmdline="$*"
+#     local safe
+#     echo "is_list_safe: $cmdline"
+
+#     safe="$(normalize_whitelist "${DAPP_LIST_SAFE:-}")"
+#     echo "safe: $safe"
+
+#     if [[ -z "$safe" ]]; then
+#         safe="ps;up -d;down;restart;pull;start;stop;top;logs"
+#     fi
+
+#     local IFS=';'
+#     local pattern
+
+#     for pattern in $safe; do
+#         pattern="${pattern#"${pattern%%[![:space:]]*}"}"
+#         pattern="${pattern%"${pattern##*[![:space:]]}"}"
+#         echo "pattern: $pattern"
+
+#         [[ -z "$pattern" ]] && continue
+
+#         if [[ "$cmdline" == "$pattern" || "$cmdline" == "$pattern "* ]]; then
+#             return 0
+#         fi
+#     done
+
+#     return 1
+# }
 
 list_help() {
     cat <<EOF
@@ -306,28 +383,49 @@ run_list_command() {
     expand_shortcut_args "$cmd" "$@"
     local list_command
     list_command="${SHORTCUT_ARGS[*]}"
+
     if ! is_list_safe "$list_command"; then
         err "Command not allowed for list operations: $list_command"
         err "Allowed operations are listed in DAPP_LIST_SAFE"
         exit 1
     fi
+
     local -a apps=()
     mapfile -t apps < <(get_apps_for_list_source "$source")
+
     if [[ ${#apps[@]} -eq 0 ]]; then
         err "No apps found for $source"
         exit 1
     fi
+
     require_compose
     local rc=0
     local app
 
     for app in "${apps[@]}"; do
         local app_dir="$DAPP_DIR/$app"
+
         if [[ ! -d "$app_dir" ]]; then
             err "Docker App '$app' not found under $DAPP_DIR"
             rc=1
             continue
         fi
+
+        if [[ -f "$app_dir/$DAPP_APP_CFG" ]]; then
+            while IFS='=' read -r key value; do
+                case "$key" in
+                    DAPP_LIST_SAFE)
+                        if [[ -z "${!key:-}" ]]; then
+                            local whitelist
+
+                            whitelist="$(cfg_value "$value")"
+                            is_list_safe jj "$whitelist"
+                        fi
+                        ;;
+                esac
+            done < "$DAPP_CONFIG_FILE"
+        fi
+
         local compose_file
         compose_file="$(find_compose_file "$app_dir")" || {
             err "No compose file found in $app_dir"
