@@ -345,6 +345,12 @@ get_apps_for_list_source() {
 }
 
 run_list_command() {
+    if (( $# < 2)); then
+        echo "Missing  COMMAND"
+        list_help
+        exit 1
+    fi
+
     local source="$1"
     shift
     local cmd="$1"
