@@ -41,7 +41,8 @@ if [[ -f "$DAPP_CONFIG_FILE" ]]; then
         case "$key" in
             DAPP_DIR| \
             DAPP_EDITOR| \
-            DAPP_LIST_SAFE)
+            DAPP_LIST_SAFE| \
+            DAPP_RUN_MODE)
                 # Only set if not already set
                 if [[ -z "${!key:-}" ]]; then
                     printf -v "$key" "%s" "$(cfg_value "$value")"
@@ -52,6 +53,8 @@ if [[ -f "$DAPP_CONFIG_FILE" ]]; then
 fi
 
 DAPP_DIR="${DAPP_DIR:-/opt/dapps}"
+DAPP_RUN_MODE="${DAPP_RUN_MODE:-"cd"}"
+
 DAPP_SELF_UPDATE_URL="${DAPP_SELF_UPDATE_URL:-https://raw.githubusercontent.com/neutralvibes/dapp/main/dapp_cmd}"
 
 
@@ -294,12 +297,15 @@ get_apps_for_list_source() {
 run_list_command() {
     local source="$1"
     shift
-    local cmd="$1"
-    shift
-    if [[ -z "$cmd" ]]; then
+
+    if  [ $# -eq 0 ] || [ -z "$1" ]; then
         err "Missing COMMAND for list operation"
         exit 1
     fi
+
+    local cmd="${1:""}"
+    shift
+
     expand_shortcut_args "$cmd" "$@"
     local list_command
     list_command="${SHORTCUT_ARGS[*]}"
@@ -331,9 +337,22 @@ run_list_command() {
             rc=1
             continue
         }
+
         echo "==== $app ===="
-        "${compose_cmd[@]}" -f "$app_dir/$compose_file" "${SHORTCUT_ARGS[@]}" || rc=1
+
+        if [[ "${DAPP_RUN_MODE}" == "cd" ]]; then
+            pushd "$app_dir" &>/dev/null || exit
+
+            "${compose_cmd[@]}" "${SHORTCUT_ARGS[@]}" || rc=1
+
+            popd  &>/dev/null || exit
+
+        else
+            "${compose_cmd[@]}" -f "$app_dir/$compose_file" "${SHORTCUT_ARGS[@]}" || rc=1
+        fi
+
         echo -e "\n"
+
     done
     return "$rc"
 }
@@ -1060,7 +1079,14 @@ if find_compose_file "$PWD" >/dev/null 2>&1; then
 
         compose_file="$(find_compose_file "$PWD")"
         require_compose
-        "${compose_cmd[@]}" -f "$compose_file" "$@"
+
+        if [[ "${DAPP_RUN_MODE}" == "cd" ]]; then
+            "${compose_cmd[@]}" "$@"
+        else
+            "${compose_cmd[@]}" -f "$compose_file" "$@"
+        fi
+
+
         exit $?
     fi
 fi
@@ -1092,10 +1118,17 @@ set -- "$app" "${SHORTCUT_ARGS[@]}"
 pushd "$app_dir" >/dev/null || exit 1
 
 require_compose
-"${compose_cmd[@]}" \
-    -f "$compose_file" \
-    "$cmd" \
-    "${@:3}"
+
+if [[ "${DAPP_RUN_MODE}" == "cd" ]]; then
+    "${compose_cmd[@]}" \ \
+        "$cmd" \
+        "${@:3}"
+else
+    "${compose_cmd[@]}" \
+        -f "$compose_file" \
+        "$cmd" \
+        "${@:3}"
+fi
 
 rc=$?
 
