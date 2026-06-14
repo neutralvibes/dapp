@@ -81,9 +81,16 @@ fi
 # Validate invalid command blocked by whitelist
 if bash "$DAPP_SCRIPT" @all logs -f | grep -c 'not allowed'; then
     echo "WHITELIST: expected invalid command rejection" >&2
-    exit 8
+    exit 9
 fi
 
+echo 'DAPP_LIST_SAFE="strict:logs' > "$TMPROOT/opt/dapps/app2/.dapp"
+
+# Validate invalid command blocked by APP .dapp whitelis
+if bash "$DAPP_SCRIPT" @list=app2 logs -t | grep -c 'Accepts only'; then
+    echo "APP WHITELIST: expected invalid command rejection" >&2
+    exit 10
+fi
 
 # Cleanup
 rm -rf "$TMPROOT"

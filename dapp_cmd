@@ -189,9 +189,12 @@ normalize_whitelist() {
 }
 
 is_list_safe() {
+    # params: whitelist command
+    local whitelist="${1:? 'is_list_safe: Whitelist missing'}"
+    shift
     local cmdline="$*"
 
-    IFS=';' read -ra patterns <<< "${DAPP_LIST_SAFE-?}"
+    IFS=';' read -ra patterns <<< "${whitelist-?}"
 
     for pattern in "${patterns[@]}"; do
         # Strip leading/trailing whitespace
@@ -258,36 +261,6 @@ is_list_safe() {
 
     return 1
 }
-
-# is_list_safe() {
-#     local cmdline="$*"
-#     local safe
-#     echo "is_list_safe: $cmdline"
-
-#     safe="$(normalize_whitelist "${DAPP_LIST_SAFE:-}")"
-#     echo "safe: $safe"
-
-#     if [[ -z "$safe" ]]; then
-#         safe="ps;up -d;down;restart;pull;start;stop;top;logs"
-#     fi
-
-#     local IFS=';'
-#     local pattern
-
-#     for pattern in $safe; do
-#         pattern="${pattern#"${pattern%%[![:space:]]*}"}"
-#         pattern="${pattern%"${pattern##*[![:space:]]}"}"
-#         echo "pattern: $pattern"
-
-#         [[ -z "$pattern" ]] && continue
-
-#         if [[ "$cmdline" == "$pattern" || "$cmdline" == "$pattern "* ]]; then
-#             return 0
-#         fi
-#     done
-
-#     return 1
-# }
 
 list_help() {
     cat <<EOF
@@ -384,7 +357,7 @@ run_list_command() {
     local list_command
     list_command="${SHORTCUT_ARGS[*]}"
 
-    if ! is_list_safe "$list_command"; then
+    if ! is_list_safe "$DAPP_LIST_SAFE" "$list_command"; then
         err "Command not allowed for list operations: $list_command"
         err "Allowed operations are listed in DAPP_LIST_SAFE"
         exit 1
@@ -411,20 +384,7 @@ run_list_command() {
             continue
         fi
 
-        if [[ -f "$app_dir/$DAPP_APP_CFG" ]]; then
-            while IFS='=' read -r key value; do
-                case "$key" in
-                    DAPP_LIST_SAFE)
-                        if [[ -z "${!key:-}" ]]; then
-                            local whitelist
-
-                            whitelist="$(cfg_value "$value")"
-                            is_list_safe jj "$whitelist"
-                        fi
-                        ;;
-                esac
-            done < "$DAPP_CONFIG_FILE"
-        fi
+        echo "==== $app ===="
 
         local compose_file
         compose_file="$(find_compose_file "$app_dir")" || {
@@ -433,7 +393,26 @@ run_list_command() {
             continue
         }
 
-        echo "==== $app ===="
+        if [[ -f "$app_dir/$DAPP_APP_CFG" ]]; then
+            local not_in_whitelist=0
+
+            while IFS='=' read -r key value; do
+                case "$key" in
+                    DAPP_LIST_SAFE)
+                        local whitelist
+                        whitelist="$(cfg_value "$value")"
+
+                        if ! is_list_safe "$whitelist" "$list_command"; then
+                            err "Command not allowed for list operations: $list_command"
+                            err "Accepts only '$whitelist', blocked by: $app_dir/$DAPP_APP_CFG \n"
+                            not_in_whitelist=1
+                        fi
+                        ;;
+                esac
+            done < "$app_dir/$DAPP_APP_CFG"
+
+            (( not_in_whitelist )) && continue
+        fi
 
         if [[ "${DAPP_RUN_MODE}" == "cd" ]]; then
             pushd "$app_dir" &>/dev/null || exit
