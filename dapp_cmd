@@ -53,7 +53,7 @@ if [[ -f "$DAPP_CONFIG_FILE" ]]; then
 fi
 
 DAPP_DIR="${DAPP_DIR:-/opt/dapps}"
-DAPP_RUN_MODE="${DAPP_RUN_MODE:-"cd"}"
+DAPP_RUN_MODE="${DAPP_RUN_MODE:-cd}"
 
 DAPP_SELF_UPDATE_URL="${DAPP_SELF_UPDATE_URL:-https://raw.githubusercontent.com/neutralvibes/dapp/main/dapp_cmd}"
 
@@ -297,15 +297,12 @@ get_apps_for_list_source() {
 run_list_command() {
     local source="$1"
     shift
-
-    if  [ $# -eq 0 ] || [ -z "$1" ]; then
+    local cmd="$1"
+    shift
+    if [[ -z "$cmd" ]]; then
         err "Missing COMMAND for list operation"
         exit 1
     fi
-
-    local cmd="${1:""}"
-    shift
-
     expand_shortcut_args "$cmd" "$@"
     local list_command
     list_command="${SHORTCUT_ARGS[*]}"
@@ -1081,9 +1078,9 @@ if find_compose_file "$PWD" >/dev/null 2>&1; then
         require_compose
 
         if [[ "${DAPP_RUN_MODE}" == "cd" ]]; then
-            "${compose_cmd[@]}" "$@"
-        else
             "${compose_cmd[@]}" -f "$compose_file" "$@"
+        else
+        "${compose_cmd[@]}" -f "$compose_file" "$@"
         fi
 
 
@@ -1118,17 +1115,10 @@ set -- "$app" "${SHORTCUT_ARGS[@]}"
 pushd "$app_dir" >/dev/null || exit 1
 
 require_compose
-
-if [[ "${DAPP_RUN_MODE}" == "cd" ]]; then
-    "${compose_cmd[@]}" \ \
-        "$cmd" \
-        "${@:3}"
-else
-    "${compose_cmd[@]}" \
-        -f "$compose_file" \
-        "$cmd" \
-        "${@:3}"
-fi
+"${compose_cmd[@]}" \
+    -f "$compose_file" \
+    "$cmd" \
+    "${@:3}"
 
 rc=$?
 
