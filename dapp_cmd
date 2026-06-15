@@ -31,26 +31,27 @@ cfg_value() {
     echo "${value#\"}"
 }
 
-#
 # Merge recognised values from .config file
 # ignoring those already set
 #
-if [[ -f "$DAPP_CONFIG_FILE" ]]; then
+load_config() {
+    local config_file="${1:?'Config file not specified'}"
+    local valid_keys="${2:?'Config valid keys not specified'}"
 
-    while IFS='=' read -r key value; do
-        case "$key" in
-            DAPP_DIR| \
-            DAPP_EDITOR| \
-            DAPP_LIST_SAFE| \
-            DAPP_RUN_MODE)
-                # Only set if not already set
+    if [[ -f  "$config_file" ]]; then
+        while IFS='=' read -r key value; do
+            if [[ "$key" =~ ^($valid_keys)$ ]]; then
                 if [[ -z "${!key:-}" ]]; then
                     printf -v "$key" "%s" "$(cfg_value "$value")"
-                 fi
-                ;;
-        esac
-    done < "$DAPP_CONFIG_FILE"
-fi
+                fi
+            fi
+        done < "$config_file"
+    fi
+}
+
+load_config \
+    "$DAPP_CONFIG_FILE" \
+        "DAPP_DIR|DAPP_EDITOR|DAPP_LIST_SAFE|DAPP_RUN_MODE"
 
 DAPP_DIR="${DAPP_DIR:-/opt/dapps}"
 DAPP_RUN_MODE="${DAPP_RUN_MODE:-cd}"
