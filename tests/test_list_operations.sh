@@ -24,8 +24,10 @@ fi
 
 mkdir -p "$TMPROOT/opt/dapps/app1"
 mkdir -p "$TMPROOT/opt/dapps/app2"
+
 printf 'services:\n  web:\n    image: nginx\n' > "$TMPROOT/opt/dapps/app1/compose.yml"
 printf 'services:\n  web:\n    image: nginx\n' > "$TMPROOT/opt/dapps/app2/compose.yml"
+
 export DAPP_DIR="$TMPROOT/opt/dapps"
 
 # install dapp to ensure run_list_command is callable
@@ -40,8 +42,8 @@ if ! bash "$DAPP_SCRIPT" @list-help | grep -c 'Current whitelist:'; then
     exit 2
 fi
 
-# Validate @all simple command
-if ! bash "$DAPP_SCRIPT" @all ps | grep -c '==== app1 ===='; then
+# Validate @list-all simple command
+if ! bash "$DAPP_SCRIPT" @list-all ps | grep -c '==== app1 ===='; then
     echo "LIST-ALL: expected app output for app1" >&2
     exit 3
 fi
@@ -53,33 +55,33 @@ if ! bash "$DAPP_SCRIPT" '@list=app2' ps | grep -c '==== app2 ===='; then
 fi
 
 # Validate @save-status stopped file
-bash "$DAPP_SCRIPT" @save-status stopped "$TMPROOT/stopped.txt"
+bash "$DAPP_SCRIPT" @status-save stopped "$TMPROOT/stopped.txt"
 if [[ ! -f "$TMPROOT/stopped.txt" ]]; then
     echo "SAVE-STATUS: expected stopped file" >&2
     exit 5
 fi
 
 # Validate invalid command blocked by whitelist
-if bash "$DAPP_SCRIPT" @all up | grep -c 'not allowed'; then
+if bash "$DAPP_SCRIPT" @list-all up | grep -c 'not allowed'; then
     echo "WHITELIST: expected invalid command rejection" >&2
     exit 6
 fi
 
 # Validate invalid shortcut command blocked by whitelist
-if bash "$DAPP_SCRIPT" @all lf | grep -c 'not allowed'; then
+if bash "$DAPP_SCRIPT" @list-all lf | grep -c 'not allowed'; then
     echo "WHITELIST: expected invalid command rejection" >&2
     exit 7
 fi
 
 # Validate invalid command blocked by whitelist
-if bash "$DAPP_SCRIPT" @all logs --follow | grep -c 'not allowed'; then
+if bash "$DAPP_SCRIPT" @list-all logs --follow | grep -c 'not allowed'; then
     echo "WHITELIST: expected invalid command rejection" >&2
     exit 8
 fi
 
 
 # Validate invalid command blocked by whitelist
-if bash "$DAPP_SCRIPT" @all logs -f | grep -c 'not allowed'; then
+if bash "$DAPP_SCRIPT" @list-all logs -f | grep -c 'not allowed'; then
     echo "WHITELIST: expected invalid command rejection" >&2
     exit 9
 fi
