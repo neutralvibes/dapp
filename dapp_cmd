@@ -610,13 +610,37 @@ else
     set --
 fi
 
+print_autocomplete_data() {
+    local docker_commands apps_list options
+    apps_list="$(list_apps)"
+
+    # docker compose command completion
+    docker_commands="path edit ps up down restart start stop logs pull build config exec top images u d l r"
+
+    # option completion
+    options="${apps_list//$'\n'/' '} @ls @status @list-all @list= @list-file= @status-save @list-help -v -h --help --list-apps --apps-folder --install --uninstall --install-dcd --uninstall-dcd --self-update"
+
+    echo "$docker_commands"
+    echo "$options"
+}
+
 print_dapp_autocomplete() {
 cat <<'EOF'
 _dapp_completions() {
     local curr="${COMP_WORDS[COMP_CWORD]}"
     local prev="${COMP_WORDS[COMP_CWORD-1]}"
     local prevprev="${COMP_WORDS[COMP_CWORD-2]}"
-    local docker_commands="path edit ps up down restart start stop logs pull build config exec top images u d l r"
+
+    local data
+    data="$(dapp --autocomplete-data)"
+
+    local docker_commands options
+    {
+        read -r docker_commands
+        read -r options
+    } <<< "$data"
+
+    # local docker_commands="path edit ps up down restart start stop logs pull build config exec top images u d l r"
 
     if [[ "$prevprev" == "@list-file" ]] && [[ "$prev" == "=" ]]; then
         local path_part="$curr"
@@ -661,7 +685,7 @@ _dapp_completions() {
 
     if [[ "$COMP_CWORD" -eq 1 ]]; then
         COMPREPLY=(
-            $(compgen -W "$(dapp --list-apps) @ls @status @list-all @list= @list-file= @status-save @list-help -v -h --help --list-apps --apps-folder --autocomplete --install --uninstall --install-dcd --uninstall-dcd --self-update --yes" -- "$curr")
+            $(compgen -W "$options" -- "$curr")
         )
 
         if [[ "${#COMPREPLY[@]}" -eq 1 ]] && [[ "${COMPREPLY[0]}" == "@list-file=" ]]; then
@@ -1182,7 +1206,6 @@ case "${1:-}" in
     --uninstall-dcd) uninstall_dcd; exit 0 ;;
     --install-dcd) install_dcd; exit 0 ;;
     --self-update) self_update; exit 0 ;;
-    --autocomplete) print_dapp_autocomplete; exit 0 ;;
     --list-apps) list_apps; exit 0 ;;
     --apps-folder) echo "$DAPP_DIR"; exit 0 ;;
     -v|version) echo "dapp version ${DAPP_VERSION}"; exit 0 ;;
@@ -1194,10 +1217,11 @@ case "${1:-}" in
         exit $?
         ;;
     @status) status_all; exit 0 ;;
-    @status-save)
-        save_status_to_file "${2:-}" "${3:-}"
-        exit $?
-        ;;
+    @status-save) save_status_to_file "${2:-}" "${3:-}"; exit $? ;;
+
+    # Used internally for completion services
+    --autocomplete) print_dapp_autocomplete; exit 0 ;;
+    --autocomplete-data) print_autocomplete_data; exit 0;;
 esac
 
 # No param list apps
