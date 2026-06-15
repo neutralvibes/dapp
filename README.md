@@ -32,12 +32,12 @@ dapp frigate r
 A taste of what else it can do:
 
 ```bash
-dapp status                          # Status of every app at a glance
-dapp immich logs -f                  # Stream logs for any app
-dapp postgresql exec db psql -U postgres  # Exec into a container
-dapp @list=nginx,caddy,grafana u     # Start a group of apps at once
-dapp @save-status stopped ~/stopped.txt   # Save a list of stopped apps
-dcd nginx                            # cd straight into the nginx folder
+dapp @status                            # Status of every app at a glance
+dapp immich logs -f                     # Stream logs for any app
+dapp postgresql exec db psql -U postgres # Exec into a container
+dapp @list=nginx,caddy,grafana u        # Start a group of apps at once
+dapp @status-save stopped ~/stopped.txt # Save a list of stopped apps
+dcd nginx                               # cd straight into the nginx folder
 ```
 
 ---
@@ -159,17 +159,29 @@ sudo -e /opt/dapp_cmd/.config
 ```
 
 | Variable       | Default      | Description                             |
-|----------------|-------------|------------------------------------------|
+|----------------|--------------|------------------------------------------|
 | `DAPP_DIR`     | `/opt/dapps` | Parent directory for Docker app folders |
 | `DAPP_EDITOR`  | `nano`       | Editor used by `dapp APP edit`          |
 | `DAPP_LIST_SAFE` | see config | Whitelisted commands for list operations |
 
 ### List Command Whitelist
 
-The `@all`, `@list=`, and `@list-file=` operations only run commands in the `DAPP_LIST_SAFE` whitelist (to prevent accidentally looping blocking or destructive commands over every app).
+The `@list-all`, `@list=`, and `@list-file=` operations only run commands in the `DAPP_LIST_SAFE` whitelist (to prevent accidentally looping blocking or destructive commands over every app).
 
-```
-DAPP_LIST_SAFE="ps;up -d;down;restart"
+
+| Whitelist entry              |                                      |
+|------------------------------|--------------------------------------|
+| COMMAND                      | Permit COMMAND with any ARGS          |
+| noflag:(-f\|--follow):COMMAND| Ban COMMAND ARGS '-f' and '--follow'. Allows any other ARGS. |
+| strict:COMMAND               | Permit COMMAND but without any ARGS       |
+| flag:(-d\|--hi\|-p):COMMAND  | Permit COMMAND ARGS '-d', '--hi' and '-p' only|
+
+Whitelist entries must be separated by a semi-colon.
+
+
+```text
+# Example whitelist
+DAPP_LIST_SAFE="ps; up -d; start; stop; down; restart; noflag:(-f|--follow):logs"
 ```
 
 If `DAPP_LIST_SAFE` is unset, `dapp` falls back to an internal default list.
@@ -181,11 +193,11 @@ If `DAPP_LIST_SAFE` is unset, `dapp` falls back to an internal default list.
 ### Quick Reference
 
 ```bash
-dapp ls                          # List all Docker compose apps
-dapp status                      # Show status of all apps
+dapp @ls                         # List all Docker compose apps
+dapp @status                     # Show status of all apps
 dapp APP                         # Run 'docker compose ps' for APP
 dapp APP edit                    # Edit APP's compose file
-dapp APP [compose command...]    # Run any compose command for APP
+dapp APP [compose command...]    # Run compose command for APP
 ```
 
 ### Command Shortcuts
@@ -239,28 +251,28 @@ dapp postgresql exec db psql -U postgres
 
 ### List Operations
 
-Run a whitelisted command across multiple apps using `@all`, `@list=`, or `@list-file=`.
+Run a whitelisted command across multiple apps using `@list-all`, `@list=`, or `@list-file=`.
 
 ```bash
 # All apps
-dapp @all ps
+dapp @list-all ps
 
 # Selected apps (comma-separated)
-dapp @list=frigate,caddy stop
+dapp @list=frigate,caddy,immich stop
 
 # Apps listed in a file (one name per line)
-dapp @list-file=~/dlists/app-list.dapp down
+dapp @list-file=~/dlists/app-list.lst down
 ```
 
-> **Caution:** Using `@all` targets every detected app. It's recommended to use named lists for routine batch operations.
+> **Caution:** Using `@list-all` targets every detected app. It's recommended to use named lists for routine batch operations.
 
 #### Saving Status Lists
 
 Generate app name lists (one per line) that can be fed back into `@list-file=`:
 
 ```bash
-dapp @save-status stopped /path/to/file    # List all stopped apps
-dapp @save-status running /path/to/file    # List all running apps
+dapp @status-save stopped /path/to/file    # List all stopped apps
+dapp @status-save running /path/to/file    # List all running apps
 ```
 
 ### Tab Completion
@@ -325,8 +337,8 @@ stackb nzbget build
 ### Common Workflows
 
 ```bash
-# Check all app statuses
-dapp status
+# Check all app statuses. (! running=stopped)
+dapp @status
 
 # Start a service and follow its logs
 dapp nginx u
@@ -364,7 +376,8 @@ Environment variables always override the `.config` file.
 |-----------------|-------------|------------------------------------------|
 | `DAPP_DIR`      | `/opt/dapps` | Parent directory for Docker app folders |
 | `DAPP_EDITOR`   | `nano`       | Editor used by `dapp APP edit`          |
-| `DAPP_LIST_SAFE`| _see config_ | Whitelist for list commands|
+| `DAPP_LIST_SAFE`| _see config_ | Whitelist for list commands             |
+
 ---
 
 ## Troubleshooting
@@ -374,7 +387,7 @@ Environment variables always override the `.config` file.
 The app sub-folder doesn't exist under `$DAPP_DIR`:
 
 ```bash
-dapp ls              # List detected apps
+dapp @ls             # List detected apps
 ls "$DAPP_DIR"/      # Check the raw directory
 ```
 

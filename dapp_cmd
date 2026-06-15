@@ -269,11 +269,11 @@ List operations:
 
 These work on the selected APP folders under the DAPP_DIR parent.
 
-  dapp @all COMMAND [ARGS]                          Run on all APPS
+  dapp @list-all COMMAND [ARGS]                     Run on all APPS (use care)
   dapp @list=APP1,APP2,APP3 COMMAND [ARGS]          Run on named APPS
   dapp @list-file=/path/to/file COMMAND [ARGS]      Run on named APPS in file
-  dapp @save-status stopped PATH_TO_FILE            Save stopped APPS to file
-  dapp @save-status running PATH_TO_FILE            Save running APPS to file
+  dapp @status-save stopped PATH_TO_FILE            Save stopped APPS to file
+  dapp @status-save running PATH_TO_FILE            Save running APPS to file
   dapp @list-help                                   Print this help
 
 DAPP_LIST_SAFE:
@@ -489,14 +489,14 @@ USAGE:
   dapp [APP] [COMMAND] [ARGS]   Run docker compose command
 
 GLOBAL OPTIONS:
-  ls                            List all Docker apps under DAPP_DIR
+  @ls                            List all Docker apps under DAPP_DIR
                                 (folders with a compose file)
 
-  status                        Show running status of all apps
+  @status                        Print status of all apps (running/stopped)
 
 BASIC COMMANDS (from anywhere)
   dapp APP                      Quick 'ps' to get APP info
-  dapp APP path                 Returns path to app directory
+  dapp APP path                 Returns path to APP directory
   dapp APP edit                 Edit APP's compose file in editor
   dapp APP COMMAND [ARGS]       Docker compose COMMAND [ARGS]' on APP
   dapp APP @bash SERVICE        bash console for APP SERVICE
@@ -504,15 +504,16 @@ BASIC COMMANDS (from anywhere)
 
 SHORTCUTS COMMANDS (work with APP or in local mode):
   b                             build
-  u                             up -d
   d                             down
   e                             exec
   k                             kill
   l                             logs
   lf                            logs -f
-  r                             restart
   p                             pull
+  r                             restart
+  u                             up -d
   t                             top
+  
   SPECICALS SHORTCUTS
   @bash                         exec -it SERVICE bash
   @sh                           exec -it SERVICE sh
@@ -533,13 +534,15 @@ LOCAL MODE (run from inside APP folder):
 
 OPTIONS:
   --apps-folder                 Show the configured DAPP_DIR
-  --list-apps                   List available apps (shortcut above)
+  --list-apps                   List available apps (shortcut @ls)
 
-  @all COMMAND [ARGS]           Run a whitelisted command against every app
-  @list=APP1,APP2               Run a whitelisted command against apps in a list
-  @list-file=/path/to/file      Run a whitelisted command against apps from a file
-  @save-status running file     Save running app names to a file
-  @save-status stopped file     Save stopped app names to a file
+  @list-all COMMAND [ARGS]      Run whitelisted COMMAND against every APP
+  @list=APP1,APP2               Run whitelisted COMMAND against APPS in list
+  @list-file=/path/to/file      Run a whitelisted COMMAND against APPS from a file
+
+  @status                       Print status of every APP (! running=stopped)
+  @status-save running file     Save 'running' APP names to a file
+  @status-save stopped file     Save 'stopped' APP names to a file (see @status)
   @list-help                    Show list operation usage and whitelist
 
   --install                     Install globally with bash completion
@@ -553,8 +556,8 @@ OPTIONS:
   -v                            Show dapp version
 
 EXAMPLES:
-  dapp ls                       List all apps
-  dapp status                   Show app statuses
+  dapp @ls                      List all apps
+  dapp @status                  Show app statuses
   dapp nginx up                 Start nginx
   dapp traefik logs -f          Stream traefik logs
   dapp postgresql d             Stop postgresql
@@ -563,7 +566,7 @@ EXAMPLES:
 ENVIRONMENT:
   DAPP_DIR                      Docker apps directory, $DAPP_DIR
   DAPP_EDITOR                   Editor for 'dapp APP edit', $DAPP_EDITOR
-  DAPP_LIST_SAFE                Whitelistfor list operations
+  DAPP_LIST_SAFE                Global whitelist for list operations
 
 For more info: https://github.com/neutralvibes/dapp
 EOF
@@ -597,7 +600,7 @@ _dapp_completions() {
 
     if [[ "$COMP_CWORD" -eq 1 ]]; then
         COMPREPLY=(
-            $(compgen -W "$(dapp --list-apps) ls status @all @list= @list-file= @save-status @list-help -v -h --help --list-apps --apps-folder --autocomplete --install --uninstall --install-dcd --uninstall-dcd --self-update --yes" -- "$curr")
+            $(compgen -W "$(dapp --list-apps) @ls @status @list-all @list= @list-file= @status-save @list-help -v -h --help --list-apps --apps-folder --autocomplete --install --uninstall --install-dcd --uninstall-dcd --self-update --yes" -- "$curr")
         )
         return
     fi
@@ -608,7 +611,7 @@ _dapp_completions() {
             return
         fi
 
-        if [[ "$prev" == @all || "$prev" == @list=* || "$prev" == @list-file:* || "$prev" == @list-file=* ]]; then
+        if [[ "$prev" == @list-all || "$prev" == @list=* || "$prev" == @list-file:* || "$prev" == @list-file=* ]]; then
             COMPREPLY=(
                 $(compgen -W "ps up down restart start stop logs pull build config exec top images u d l r" -- "$curr")
             )
@@ -1131,16 +1134,16 @@ case "${1:-}" in
     --autocomplete) print_dapp_autocomplete; exit 0 ;;
     --list-apps) list_apps; exit 0 ;;
     --apps-folder) echo "$DAPP_DIR"; exit 0 ;;
-    -v) echo "dapp version ${DAPP_VERSION}"; exit 0 ;;
+    -v|version) echo "dapp version ${DAPP_VERSION}"; exit 0 ;;
     -h|--help) print_help; exit 0 ;;
-    ls) list_apps; exit 0 ;;
-    status) status_all; exit 0 ;;
+    @ls) list_apps; exit 0 ;;
     @list-help) list_help; exit 0 ;;
-    @all|@list=*|@list-file:*|@list-file=*)
+    @list-all|@list=*|@list-file:*|@list-file=*)
         run_list_command "$1" "${@:2}"
         exit $?
         ;;
-    @save-status)
+    @status) status_all; exit 0 ;;
+    @status-save)
         save_status_to_file "${2:-}" "${3:-}"
         exit $?
         ;;
