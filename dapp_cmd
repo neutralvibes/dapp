@@ -306,15 +306,33 @@ parse_app_list() {
     done
 }
 
-read_apps_from_file() {
+expand_path() {
     local path="$1"
+
+    # shellcheck disable=SC2088
+    if [[ "$path" == "~" ]]; then
+        echo "$HOME"
+    elif [[ "$path" == "~/"* ]]; then
+        echo "${HOME}/${path#\~/}"
+    elif [[ "$path" == "~"* ]]; then
+        echo "$path"
+    else
+        echo "$path"
+    fi
+}
+
+read_apps_from_file() {
+    local path
+    path="$(expand_path "$1")"
     if [[ "$path" != /* ]]; then
         path="$PWD/$path"
     fi
+
     if [[ ! -f "$path" ]]; then
         err "List file not found: $path"
         exit 1
     fi
+
     local app
     while IFS= read -r app; do
         app="${app#"${app%%[![:space:]]*}"}"
@@ -597,33 +615,80 @@ cat <<'EOF'
 _dapp_completions() {
     local curr="${COMP_WORDS[COMP_CWORD]}"
     local prev="${COMP_WORDS[COMP_CWORD-1]}"
+    local prevprev="${COMP_WORDS[COMP_CWORD-2]}"
+    local docker_commands="path edit ps up down restart start stop logs pull build config exec top images u d l r"
+
+    if [[ "$prevprev" == "@list-file" ]] && [[ "$prev" == "=" ]]; then
+        local path_part="$curr"
+
+        # Expand tilde
+        if [[ "$path_part" == "~/"* ]]; then
+            path_part="${HOME}/${path_part#\~/}"
+        fi
+
+        local completions
+        completions=$(compgen -f -d -- "$path_part" 2>/dev/null)
+
+        COMPREPLY=()
+        while IFS= read -r line; do
+            if [[ -n "$line" ]]; then
+                # Convert back to ~/ for display
+                if [[ "$line" == "$HOME/"* ]]; then
+                    line="~/${line#$HOME/}"
+                fi
+                COMPREPLY+=("$line")
+            fi
+        done <<< "$completions"
+
+        compopt -o filenames
+        return
+    fi
+
+    # Check if the user already provided an @list-file= argument
+    local saw_list_file=0
+    local last_idx=$((COMP_CWORD - 1))
+    for ((i=1; i<=last_idx; i++)); do
+        if [[ "${COMP_WORDS[$i]}" == @list-file=* ]] || [[ "${COMP_WORDS[$i]}" == "@list-file" && "${COMP_WORDS[$i+1]}" == "=" ]]; then
+            saw_list_file=1
+            break
+        fi
+    done
+
+    if [[ $saw_list_file -eq 1 ]] && [[ "$COMP_CWORD" -gt 2 ]]; then
+        COMPREPLY=($(compgen -W "$docker_commands" -- "$cur"))
+        return
+    fi
 
     if [[ "$COMP_CWORD" -eq 1 ]]; then
         COMPREPLY=(
             $(compgen -W "$(dapp --list-apps) @ls @status @list-all @list= @list-file= @status-save @list-help -v -h --help --list-apps --apps-folder --autocomplete --install --uninstall --install-dcd --uninstall-dcd --self-update --yes" -- "$curr")
         )
+
+        if [[ "${#COMPREPLY[@]}" -eq 1 ]] && [[ "${COMPREPLY[0]}" == "@list-file=" ]]; then
+            compopt -o nospace
+        fi
         return
     fi
 
     if [[ "$COMP_CWORD" -eq 2 ]]; then
-        if [[ "$prev" == "@save-status" ]]; then
+
+        if [[ "$prev" == "@status-save" ]]; then
             COMPREPLY=( $(compgen -W "running stopped" -- "$curr") )
             return
         fi
 
-        if [[ "$prev" == @list-all || "$prev" == @list=* || "$prev" == @list-file:* || "$prev" == @list-file=* ]]; then
+        if [[ "$prev" == @list-all || "$prev" == @list=* || "$prev" == @list-file=* ]]; then
             COMPREPLY=(
-                $(compgen -W "ps up down restart start stop logs pull build config exec top images u d l r" -- "$curr")
+                $(compgen -W "$docker_commands" -- "$curr")
             )
             return
         fi
 
         COMPREPLY=(
-            $(compgen -W "path edit ps up down restart start stop logs pull build config exec top images u d l r" -- "$curr")
+            $(compgen -W "$docker_commands" -- "$curr")
         )
         return
     fi
-
     COMPREPLY=()
 }
 
