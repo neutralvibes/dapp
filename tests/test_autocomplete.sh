@@ -18,7 +18,7 @@ if ! grep -q 'complete -F _dapp_completions dapp' <<<"$OUT"; then
     exit 3
 fi
 
-for token in '@all' '@list=' '@list-file=' '@save-status' '@list-help'; do
+for token in '@list-all' '@list=' '@list-file=' '@status-save' '@list-help'; do
     if ! grep -q "${token}" <<<"$OUT"; then
         echo "AUTOCOMPLETE: expected token ${token} in output" >&2
         exit 4
