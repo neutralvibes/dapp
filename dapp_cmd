@@ -327,7 +327,7 @@ read_apps_from_file() {
 get_apps_for_list_source() {
     local source="$1"
     case "$source" in
-        @all)
+        @list-all)
             get_all_apps
             ;;
         @list=*)
@@ -513,7 +513,7 @@ SHORTCUTS COMMANDS (work with APP or in local mode):
   r                             restart
   u                             up -d
   t                             top
-  
+
   SPECICALS SHORTCUTS
   @bash                         exec -it SERVICE bash
   @sh                           exec -it SERVICE sh
@@ -1110,20 +1110,6 @@ status_all() {
         fi
     done < <(list_apps)
 }
-
-# detect_compose() {
-#     if docker compose version >/dev/null 2>&1; then
-#         echo "docker compose"
-#         return 0
-#     fi
-
-#     if docker-compose version >/dev/null 2>&1; then
-#         echo "docker-compose"
-#         return 0
-#     fi
-
-#     return 1
-# }
 
 case "${1:-}" in
     --install) install_self; exit 0 ;;
