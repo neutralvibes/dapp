@@ -40,7 +40,7 @@ dapp @list=nginx,caddy,grafana u        # Start a group of apps at once
 dapp nextcloud d                        # Bring nextcloud down
 dapp @status-save stopped ~/stopped.txt # Save a list of stopped apps
 dapp nginx                              # ps of nginx app
-
+dapp ports-check 1984                   # Find container using port 1984, if any
 dcd nginx                               # cd straight into the nginx folder
 ```
 
@@ -72,6 +72,8 @@ dcd nginx                               # cd straight into the nginx folder
 ## Overview
 
 `dapp` is a bash script that wraps `docker compose` (v2) or `docker-compose` (v1.x) to make managing one or multiple Docker applications faster and less repetitive. It provides command shortcuts, tab completion, multi-app operations, and works from any directory.
+
+_This works for me, but there are advanced ways of working with docker that this may not suit. For this reason it is important to test this utility to see if it meets your requirements._
 
 **Key features:**
 
@@ -362,6 +364,10 @@ dapp postgresql exec db psql -U postgres
 dapp nginx d
 dapp nginx build
 dapp nginx u
+
+# Check what if anything is using a port
+dapp ports-check 8080
+
 ```
 
 ---

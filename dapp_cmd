@@ -141,7 +141,7 @@ expand_shortcut_args() {
             SHORTCUT_D_ARGS_1=(up -d)
             SHORTCUT_D_ARGS_2=(logs -f "$@")
             ;;
-        pullup)
+        pulluo)
             SHORTCUT_D_ARGS_1=(pull)
             SHORTCUT_D_ARGS_2=(up -d "$@")
             ;;
@@ -535,6 +535,15 @@ save_status_to_file() {
     echo "Saved apps with status '$target_status' to $path"
 }
 
+ports_query() {
+    local port=${1:-}
+    if [ -z "$port" ]; then
+        docker ps --format "table {{.Names}}\t{{.Ports}}"
+    else
+        docker ps --filter "publish=$port" --format "table {{.Names}}\t{{.Image}}\t{{.Ports}}"
+    fi
+}
+
 print_help() {
 cat <<EOF
 dapp - docker compose wrapper
@@ -544,10 +553,13 @@ USAGE:
   dapp [APP] [COMMAND] [ARGS]   Run docker compose command
 
 GLOBAL OPTIONS:
-  @ls                            List all Docker apps under DAPP_DIR
+  @ls                           List all Docker apps under DAPP_DIR
                                 (folders with a compose file)
 
-  @status                        Print status of all apps (running/stopped)
+  @status                       Print status of all apps (running/stopped)
+
+  ports-check [PORT]          Print ALL docker ports in use.
+                                If PORT supplied, shows if used by who
 
 BASIC COMMANDS (from anywhere)
   dapp APP                      Quick 'ps' to get APP info
@@ -654,7 +666,7 @@ print_autocomplete_data() {
     apps_list="$(list_apps)"
 
     # docker compose command completion
-    docker_commands="path edit ps up down restart start stop logs pull pullup build config exec top images u ulf d l r"
+    docker_commands="path edit ps up down restart start stop logs ports-check pull pullup build config exec top images u ulf d l r"
 
     # option completion
     options="${apps_list//$'\n'/' '} @ls @status @list-all @list= @list-file= @status-save @list-help -v -h --help --list-apps --apps-folder --install --uninstall --install-dcd --uninstall-dcd --self-update"
@@ -1245,7 +1257,7 @@ case "${1:-}" in
     --self-update) self_update; exit 0 ;;
     --list-apps) list_apps; exit 0 ;;
     --apps-folder) echo "$DAPP_DIR"; exit 0 ;;
-    -v|version) echo "dapp version ${DAPP_VERSION}"; exit 0 ;;
+    -v|version) echo "dapp ${DAPP_VERSION}"; exit 0 ;;
     -h|--help) print_help; exit 0 ;;
     @ls) list_apps; exit 0 ;;
     @list-help) list_help; exit 0 ;;
@@ -1253,6 +1265,7 @@ case "${1:-}" in
         run_list_command "$1" "${@:2}"
         exit $?
         ;;
+    ports-check) ports_query "${2:-}" ; exit 0;;
     @status) status_all; exit 0 ;;
     @status-save) save_status_to_file "${2:-}" "${3:-}"; exit $? ;;
 
