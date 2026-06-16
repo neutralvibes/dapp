@@ -1257,7 +1257,7 @@ case "${1:-}" in
     --self-update) self_update; exit 0 ;;
     --list-apps) list_apps; exit 0 ;;
     --apps-folder) echo "$DAPP_DIR"; exit 0 ;;
-    -v|version) echo "dapp ${DAPP_VERSION}"; exit 0 ;;
+    -v|version) echo "dapp version ${DAPP_VERSION}"; exit 0 ;;
     -h|--help) print_help; exit 0 ;;
     @ls) list_apps; exit 0 ;;
     @list-help) list_help; exit 0 ;;
