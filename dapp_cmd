@@ -121,6 +121,8 @@ find_compose_file() {
 }
 
 expand_shortcut_args() {
+    # Modified? MUST update  print_autocomplete_data
+    # So changes are reflected in completion data
     local cmd="$1"
     shift
 
@@ -135,6 +137,14 @@ expand_shortcut_args() {
         r) SHORTCUT_ARGS=(restart "$@");;
         t) SHORTCUT_ARGS=(top "$@");;
         u) SHORTCUT_ARGS=(up -d "$@");;
+        ulf)
+            SHORTCUT_D_ARGS_1=(up -d)
+            SHORTCUT_D_ARGS_2=(logs -f "$@")
+            ;;
+        pullup)
+            SHORTCUT_D_ARGS_1=(pull)
+            SHORTCUT_D_ARGS_2=(up -d "$@")
+            ;;
         @bash) SHORTCUT_ARGS=(exec -it "$@" bash);;
         @sh) SHORTCUT_ARGS=(exec -it "$@" sh);;
         *) SHORTCUT_ARGS=("$cmd" "$@");;
@@ -191,6 +201,7 @@ normalize_whitelist() {
 
 is_list_safe() {
     # params: whitelist command
+
     local whitelist="${1:? 'is_list_safe: Whitelist missing'}"
     shift
     local cmdline="$*"
@@ -380,7 +391,13 @@ run_list_command() {
     fi
     expand_shortcut_args "$cmd" "$@"
     local list_command
-    list_command="${SHORTCUT_ARGS[*]}"
+
+    if [[ ! -z "${SHORTCUT_D_ARGS_1:-}" ]]; then
+
+        list_command=${SHORTCUT_D_ARGS_1[0]}
+    else
+        list_command="${SHORTCUT_ARGS[*]}"
+    fi
 
     if ! is_list_safe "$DAPP_LIST_SAFE" "$list_command"; then
         err "Command not allowed for list operations: $list_command"
@@ -439,15 +456,27 @@ run_list_command() {
             (( not_in_whitelist )) && continue
         fi
 
-        if [[ "${DAPP_RUN_MODE}" == "cd" ]]; then
+        if [[ "${DAPP_RUN_MODE:-cd}" == "cd" ]]; then
             pushd "$app_dir" &>/dev/null || exit
 
-            "${compose_cmd[@]}" "${SHORTCUT_ARGS[@]}" || rc=1
+            if [[ ! -z "${SHORTCUT_D_ARGS_1:-}" ]]; then
+                "${compose_cmd[@]}"  "${SHORTCUT_D_ARGS_1[@]}" \
+                && \
+                "${compose_cmd[@]}" "${SHORTCUT_D_ARGS_2[@]}" || rc=1
+            else
+                "${compose_cmd[@]}" "${SHORTCUT_ARGS[@]}" || rc=1
+            fi
 
             popd  &>/dev/null || exit
 
         else
-            "${compose_cmd[@]}" -f "$app_dir/$compose_file" "${SHORTCUT_ARGS[@]}" || rc=1
+            if [[ ! -z "${SHORTCUT_D_ARGS_1:-}" ]]; then
+                "${compose_cmd[@]}" -f "$app_dir/$compose_file" "${SHORTCUT_D_ARGS_1[@]}" \
+                && \
+                "${compose_cmd[@]}" -f "$app_dir/$compose_file" "${SHORTCUT_D_ARGS_2[@]}" || rc=1
+            else
+                "${compose_cmd[@]}" -f "$app_dir/$compose_file" "${SHORTCUT_ARGS[@]}" || rc=1
+            fi
         fi
 
         echo -e "\n"
@@ -528,8 +557,10 @@ SHORTCUTS COMMANDS (work with APP or in local mode):
   l                             logs
   lf                            logs -f
   p                             pull
+  pullup                        pull && up -d
   r                             restart
   u                             up -d
+  ulf                           up -d && logs -f
   t                             top
 
   SPECICALS SHORTCUTS
@@ -615,7 +646,7 @@ print_autocomplete_data() {
     apps_list="$(list_apps)"
 
     # docker compose command completion
-    docker_commands="path edit ps up down restart start stop logs pull build config exec top images u d l r"
+    docker_commands="path edit ps up down restart start stop logs pull pullup build config exec top images u ulf d l r"
 
     # option completion
     options="${apps_list//$'\n'/' '} @ls @status @list-all @list= @list-file= @status-save @list-help -v -h --help --list-apps --apps-folder --install --uninstall --install-dcd --uninstall-dcd --self-update"
@@ -639,8 +670,6 @@ _dapp_completions() {
         read -r docker_commands
         read -r options
     } <<< "$data"
-
-    # local docker_commands="path edit ps up down restart start stop logs pull build config exec top images u d l r"
 
     if [[ "$prevprev" == "@list-file" ]] && [[ "$prev" == "=" ]]; then
         local path_part="$curr"
@@ -685,7 +714,7 @@ _dapp_completions() {
 
     if [[ "$COMP_CWORD" -eq 1 ]]; then
         COMPREPLY=(
-            $(compgen -W "$options" -- "$curr")
+            $(compgen -W "$docker_commands $options" -- "$curr")
         )
 
         if [[ "${#COMPREPLY[@]}" -eq 1 ]] && [[ "${COMPREPLY[0]}" == "@list-file=" ]]; then
@@ -1239,12 +1268,18 @@ if find_compose_file "$PWD" >/dev/null 2>&1; then
         compose_file="$(find_compose_file "$PWD")"
         require_compose
 
+        if [[ ! -z "${SHORTCUT_D_ARGS_1:-}" ]]; then
+            "${compose_cmd[@]}"  "${SHORTCUT_D_ARGS_1[@]}" \
+            && \
+            "${compose_cmd[@]}" "${SHORTCUT_D_ARGS_2[@]}"
+            exit $?
+        fi
+
         if [[ "${DAPP_RUN_MODE}" == "cd" ]]; then
             "${compose_cmd[@]}" -f "$compose_file" "$@"
         else
         "${compose_cmd[@]}" -f "$compose_file" "$@"
         fi
-
 
         exit $?
     fi
@@ -1271,12 +1306,23 @@ compose_file="$(find_compose_file "$app_dir")" || {
 cmd="${2:-ps}"
 
 expand_shortcut_args "$cmd" "${@:3}"
+
 cmd="${SHORTCUT_ARGS[0]}"
 set -- "$app" "${SHORTCUT_ARGS[@]}"
 
 pushd "$app_dir" >/dev/null || exit 1
 
 require_compose
+
+if [[ ! -z "${SHORTCUT_D_ARGS_1:-}" ]]; then
+    "${compose_cmd[@]}" -f "$compose_file" "${SHORTCUT_D_ARGS_1[@]}" \
+    && \
+    "${compose_cmd[@]}" -f "$compose_file" "${SHORTCUT_D_ARGS_2[@]}"
+
+    popd >/dev/null || true
+    exit $?
+fi
+
 "${compose_cmd[@]}" \
     -f "$compose_file" \
     "$cmd" \

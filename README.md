@@ -32,11 +32,15 @@ dapp frigate r
 A taste of what else it can do:
 
 ```bash
+dapp pihole pullup                      # pull && up -d in one cmd
 dapp @status                            # Status of every app at a glance
-dapp immich logs -f                     # Stream logs for any app
+dapp immich lf                          # Stream logs for any app
 dapp postgresql exec db psql -U postgres # Exec into a container
 dapp @list=nginx,caddy,grafana u        # Start a group of apps at once
+dapp nextcloud d                        # Bring nextcloud down
 dapp @status-save stopped ~/stopped.txt # Save a list of stopped apps
+dapp nginx                              # ps of nginx app
+
 dcd nginx                               # cd straight into the nginx folder
 ```
 
@@ -206,11 +210,15 @@ These shortcuts expand to their full `docker compose` equivalents and work in al
 
 | Shortcut | Expands To        |
 |----------|-------------------|
-| `u`      | `up -d`           |
 | `d`      | `down`            |
 | `l`      | `logs`            |
 | `lf`     | `logs -f`         |
+| `pullup` | `pull && up -d`   |
+| `u`      | `up -d`           |
+| `ulf`    | `up -d && logs -f`|
 | `r`      | `restart`         |
+
+_Expansions containg  `&&` insert docker compose in the right places_
 
 ```bash
 dapp traefik u       # up -d
