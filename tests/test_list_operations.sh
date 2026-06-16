@@ -62,26 +62,26 @@ if [[ ! -f "$TMPROOT/stopped.txt" ]]; then
 fi
 
 # Validate invalid command blocked by whitelist
-if bash "$DAPP_SCRIPT" @list-all up | grep -c 'not allowed'; then
+if bash "$DAPP_SCRIPT" @list-all up | grep -c 'Not allowed'; then
     echo "WHITELIST: expected invalid command rejection" >&2
     exit 6
 fi
 
 # Validate invalid shortcut command blocked by whitelist
-if bash "$DAPP_SCRIPT" @list-all lf | grep -c 'not allowed'; then
+if bash "$DAPP_SCRIPT" @list-all lf | grep -c 'Not allowed'; then
     echo "WHITELIST: expected invalid command rejection" >&2
     exit 7
 fi
 
 # Validate invalid command blocked by whitelist
-if bash "$DAPP_SCRIPT" @list-all logs --follow | grep -c 'not allowed'; then
+if bash "$DAPP_SCRIPT" @list-all logs --follow | grep -c 'Not allowed'; then
     echo "WHITELIST: expected invalid command rejection" >&2
     exit 8
 fi
 
 
 # Validate invalid command blocked by whitelist
-if bash "$DAPP_SCRIPT" @list-all logs -f | grep -c 'not allowed'; then
+if bash "$DAPP_SCRIPT" @list-all logs -f | grep -c 'Not allowed'; then
     echo "WHITELIST: expected invalid command rejection" >&2
     exit 9
 fi
@@ -89,7 +89,7 @@ fi
 echo 'DAPP_LIST_SAFE="strict:logs' > "$TMPROOT/opt/dapps/app2/.dapp"
 
 # Validate invalid command blocked by APP .dapp whitelis
-if bash "$DAPP_SCRIPT" @list=app2 logs -t | grep -c 'Accepts only'; then
+if bash "$DAPP_SCRIPT" @list=app2 logs -t | grep -c 'Blocked by'; then
     echo "APP WHITELIST: expected invalid command rejection" >&2
     exit 10
 fi

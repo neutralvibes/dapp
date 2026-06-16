@@ -400,8 +400,14 @@ run_list_command() {
     fi
 
     if ! is_list_safe "$DAPP_LIST_SAFE" "$list_command"; then
-        err "Command not allowed for list operations: $list_command"
-        err "Allowed operations are listed in DAPP_LIST_SAFE"
+
+        case $list_command in
+         up) suggest="up -d";;
+         logs\ -f) suggest="logs";;
+        esac
+
+        [[ -n "${suggest:-}" ]] && maybe="Did you mean '$suggest' ?"
+        err "Not allowed for list operations, '$list_command'. ${maybe:-}"
         exit 1
     fi
 
@@ -445,8 +451,10 @@ run_list_command() {
                         whitelist="$(cfg_value "$value")"
 
                         if ! is_list_safe "$whitelist" "$list_command"; then
-                            err "Command not allowed for list operations: $list_command"
-                            err "Accepts only '$whitelist', blocked by: $app_dir/$DAPP_APP_CFG \n"
+                            es="Not allowed for list operations, '$list_command'."
+                            es+=" Blocked by $app_dir/$DAPP_APP_CFG \n"
+                            err "$es"
+
                             not_in_whitelist=1
                         fi
                         ;;
@@ -1289,7 +1297,7 @@ app="$1"
 app_dir="$DAPP_DIR/$app"
 
 [[ -d "$app_dir" ]] || {
-    err "Docker App '$app' not found under $DAPP_DIR"
+    err "No compose file here and Docker App '$app' not found under $DAPP_DIR"
     exit 1
 }
 
