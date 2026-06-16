@@ -392,7 +392,7 @@ run_list_command() {
     expand_shortcut_args "$cmd" "$@"
     local list_command
 
-    if [[ ! -z "${SHORTCUT_D_ARGS_1:-}" ]]; then
+    if [[ -n "${SHORTCUT_D_ARGS_1:-}" ]]; then
 
         list_command=${SHORTCUT_D_ARGS_1[0]}
     else
@@ -459,7 +459,7 @@ run_list_command() {
         if [[ "${DAPP_RUN_MODE:-cd}" == "cd" ]]; then
             pushd "$app_dir" &>/dev/null || exit
 
-            if [[ ! -z "${SHORTCUT_D_ARGS_1:-}" ]]; then
+            if [[ -n "${SHORTCUT_D_ARGS_1:-}" ]]; then
                 "${compose_cmd[@]}"  "${SHORTCUT_D_ARGS_1[@]}" \
                 && \
                 "${compose_cmd[@]}" "${SHORTCUT_D_ARGS_2[@]}" || rc=1
@@ -470,7 +470,7 @@ run_list_command() {
             popd  &>/dev/null || exit
 
         else
-            if [[ ! -z "${SHORTCUT_D_ARGS_1:-}" ]]; then
+            if [[ -n "${SHORTCUT_D_ARGS_1:-}" ]]; then
                 "${compose_cmd[@]}" -f "$app_dir/$compose_file" "${SHORTCUT_D_ARGS_1[@]}" \
                 && \
                 "${compose_cmd[@]}" -f "$app_dir/$compose_file" "${SHORTCUT_D_ARGS_2[@]}" || rc=1
@@ -1268,7 +1268,7 @@ if find_compose_file "$PWD" >/dev/null 2>&1; then
         compose_file="$(find_compose_file "$PWD")"
         require_compose
 
-        if [[ ! -z "${SHORTCUT_D_ARGS_1:-}" ]]; then
+        if [[ -n "${SHORTCUT_D_ARGS_1:-}" ]]; then
             "${compose_cmd[@]}"  "${SHORTCUT_D_ARGS_1[@]}" \
             && \
             "${compose_cmd[@]}" "${SHORTCUT_D_ARGS_2[@]}"
@@ -1314,7 +1314,7 @@ pushd "$app_dir" >/dev/null || exit 1
 
 require_compose
 
-if [[ ! -z "${SHORTCUT_D_ARGS_1:-}" ]]; then
+if [[ -n "${SHORTCUT_D_ARGS_1:-}" ]]; then
     "${compose_cmd[@]}" -f "$compose_file" "${SHORTCUT_D_ARGS_1[@]}" \
     && \
     "${compose_cmd[@]}" -f "$compose_file" "${SHORTCUT_D_ARGS_2[@]}"
