@@ -123,9 +123,9 @@ An **app name** in `dapp` is just the sub-folder name (e.g. `nginx`, `grafana`) 
 
 ### 1. Get dapp
 
-
 ```bash
-sudo bash -c "curl -L https://raw.githubusercontent.com/neutralvibes/dapp/refs/heads/main/get_dapp -o get_dapp && chmod +x get_dapp &&  ./get_dapp"```
+sudo bash -c "curl -L https://raw.githubusercontent.com/neutralvibes/dapp/refs/heads/main/get_dapp -o get_dapp && chmod +x get_dapp &&  ./get_dapp"
+```
 
 _You can look at the source for `get_app`. It is always a good idea to see what is happening with install methods like these._
 
