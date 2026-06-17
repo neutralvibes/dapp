@@ -21,8 +21,8 @@ set -o pipefail
 DAPP_VERSION="${DAPP_VERSION:-0.1.0}"
 
 SCRIPT_PATH="$(readlink -f "${BASH_SOURCE[0]}" 2>/dev/null || realpath "${BASH_SOURCE[0]}" 2>/dev/null || echo "${BASH_SOURCE[0]}")"
-SCRIPT_DIR="$(cd "$(dirname "$SCRIPT_PATH")" >/dev/null 2>&1 && pwd)"
-DAPP_CONFIG_FILE="$SCRIPT_DIR/.config"
+SCRIPT_DIR="$(cd "$(dirname "${SCRIPT_PATH}")" >/dev/null 2>&1 && pwd)"
+DAPP_CONFIG_FILE="${SCRIPT_DIR}/.config"
 
 DAPP_DIR="${DAPP_DIR:-}"
 
@@ -38,14 +38,14 @@ load_config() {
     local config_file="${1:?'Config file not specified'}"
     local valid_keys="${2:?'Config valid keys not specified'}"
 
-    if [[ -f  "$config_file" ]]; then
+    if [[ -f  "${config_file}" ]]; then
         while IFS='=' read -r key value; do
-            if [[ "$key" =~ ^($valid_keys)$ ]]; then
+            if [[ "${key}" =~ ^(${valid_keys})$ ]]; then
                 if [[ -z "${!key:-}" ]]; then
-                    printf -v "$key" "%s" "$(cfg_value "$value")"
+                    printf -v "${key}" "%s" "$(cfg_value "${value}")"
                 fi
             fi
-        done < "$config_file"
+        done < "${config_file}"
     fi
 }
 
@@ -111,8 +111,8 @@ find_compose_file() {
         docker-compose.yml \
         docker-compose.yaml
     do
-        [[ -f "$dir/$file" ]] && {
-            echo "$file"
+        [[ -f "${dir}/${file}" ]] && {
+            echo "${file}"
             return 0
         }
     done
@@ -126,7 +126,7 @@ expand_shortcut_args() {
     local cmd="$1"
     shift
 
-    case "$cmd" in
+    case "${cmd}" in
         b) SHORTCUT_ARGS=(build "$@");;
         d) SHORTCUT_ARGS=(down "$@");;
         e) SHORTCUT_ARGS=(exec "$@");;
@@ -147,22 +147,22 @@ expand_shortcut_args() {
             ;;
         @bash) SHORTCUT_ARGS=(exec -it "$@" bash);;
         @sh) SHORTCUT_ARGS=(exec -it "$@" sh);;
-        *) SHORTCUT_ARGS=("$cmd" "$@");;
+        *) SHORTCUT_ARGS=("${cmd}" "$@");;
     esac
 }
 
 list_apps() {
-    [[ -d "$DAPP_DIR" ]] || (err "folder does not exist, ${DAPP_DIR} "; return 1)
+    [[ -d "${DAPP_DIR}" ]] || (err "folder does not exist, ${DAPP_DIR} "; return 1)
 
     local dir
     local -a apps=()
 
     # Gather matching directories
-    for dir in "$DAPP_DIR"/*; do
-        [[ -d "$dir" ]] || continue
+    for dir in "${DAPP_DIR}"/*; do
+        [[ -d "${dir}" ]] || continue
 
-        if find_compose_file "$dir" >/dev/null 2>&1; then
-            apps+=( "$(basename "$dir")" )
+        if find_compose_file "${dir}" >/dev/null 2>&1; then
+            apps+=( "$(basename "${dir}")" )
         fi
     done
 
@@ -179,13 +179,13 @@ get_all_apps() {
     local dir
     local -a apps=()
 
-    [[ -d "$DAPP_DIR" ]] || return 0
+    [[ -d "${DAPP_DIR}" ]] || return 0
 
-    for dir in "$DAPP_DIR"/*; do
-        [[ -d "$dir" ]] || continue
+    for dir in "${DAPP_DIR}"/*; do
+        [[ -d "${dir}" ]] || continue
 
-        if find_compose_file "$dir" >/dev/null 2>&1; then
-            apps+=( "$(basename "$dir")" )
+        if find_compose_file "${dir}" >/dev/null 2>&1; then
+            apps+=( "$(basename "${dir}")" )
         fi
     done
 
@@ -218,7 +218,7 @@ is_list_safe() {
         # strict: Match only
         if [[ "$pattern" == strict:* ]]; then
             local actual_cmd="${pattern#strict:}"
-            if [[ "$cmdline" =~ ^${actual_cmd}$ ]]; then
+            if [[ "${cmdline}" =~ ^${actual_cmd}$ ]]; then
                 return 0
             fi
 
@@ -228,8 +228,8 @@ is_list_safe() {
             local banned_flags="${remainder%%:*}"
             local actual_cmd="${remainder#*:}"
 
-            if [[ "$cmdline" =~ ^${actual_cmd}([[:space:]]|$) ]]; then
-                if [[ "$cmdline" =~ ([[:space:]]|^)${banned_flags}([[:space:]]|$) ]]; then
+            if [[ "${cmdline}" =~ ^${actual_cmd}([[:space:]]|$) ]]; then
+                if [[ "${cmdline}" =~ ([[:space:]]|^)${banned_flags}([[:space:]]|$) ]]; then
                     continue
                 fi
                 return 0
@@ -241,7 +241,7 @@ is_list_safe() {
             local allowed_flags="${remainder%%:*}"
             local actual_cmd="${remainder#*:}"
 
-            if [[ "$cmdline" =~ ^${actual_cmd}([[:space:]]|$) ]]; then
+            if [[ "${cmdline}" =~ ^${actual_cmd}([[:space:]]|$) ]]; then
                 local args="${cmdline#"$actual_cmd"}"
 
                 # no arguments left
@@ -265,7 +265,7 @@ is_list_safe() {
 
         # Basic Mode: cmd with any ARGS
         else
-            if [[ "$cmdline" =~ ^${pattern}([[:space:]]|$) ]]; then
+            if [[ "${cmdline}" =~ ^${pattern}([[:space:]]|$) ]]; then
                 return 0
             fi
         fi
@@ -313,7 +313,7 @@ parse_app_list() {
     for app in "${apps[@]}"; do
         app="${app#"${app%%[![:space:]]*}"}"
         app="${app%"${app##*[![:space:]]}"}"
-        [[ -n "$app" ]] && printf '%s\n' "$app"
+        [[ -n "${app}" ]] && printf '%s\n' "${app}"
     done
 }
 
@@ -336,7 +336,7 @@ read_apps_from_file() {
     local path
     path="$(expand_path "$1")"
     if [[ "$path" != /* ]]; then
-        path="$PWD/$path"
+        path="${PWD}/$path"
     fi
 
     if [[ ! -f "$path" ]]; then
@@ -348,8 +348,8 @@ read_apps_from_file() {
     while IFS= read -r app; do
         app="${app#"${app%%[![:space:]]*}"}"
         app="${app%"${app##*[![:space:]]}"}"
-        [[ -z "$app" || "$app" == \#* ]] && continue
-        printf '%s\n' "$app"
+        [[ -z "${app}" || "${app}" == \#* ]] && continue
+        printf '%s\n' "${app}"
     done < "$path"
 }
 
@@ -385,11 +385,11 @@ run_list_command() {
     shift
     local cmd="$1"
     shift
-    if [[ -z "$cmd" ]]; then
+    if [[ -z "${cmd}" ]]; then
         err "Missing COMMAND for list operation"
         exit 1
     fi
-    expand_shortcut_args "$cmd" "$@"
+    expand_shortcut_args "${cmd}" "$@"
     local list_command
 
     if [[ -n "${SHORTCUT_D_ARGS_1:-}" ]]; then
@@ -424,24 +424,24 @@ run_list_command() {
     local app
 
     for app in "${apps[@]}"; do
-        local app_dir="$DAPP_DIR/$app"
+        local app_dir="${DAPP_DIR}/${app}"
 
-        if [[ ! -d "$app_dir" ]]; then
-            err "Docker App '$app' not found under $DAPP_DIR"
+        if [[ ! -d "${app_dir}" ]]; then
+            err "Docker App '${app}' not found under ${DAPP_DIR}"
             rc=1
             continue
         fi
 
-        echo "==== $app ===="
+        echo "==== ${app} ===="
 
         local compose_file
-        compose_file="$(find_compose_file "$app_dir")" || {
-            err "No compose file found in $app_dir"
+        compose_file="$(find_compose_file "${app_dir}")" || {
+            err "No compose file found in ${app_dir}"
             rc=1
             continue
         }
 
-        if [[ -f "$app_dir/$DAPP_APP_CFG" ]]; then
+        if [[ -f "${app_dir}/$DAPP_APP_CFG" ]]; then
             local not_in_whitelist=0
 
             while IFS='=' read -r key value; do
@@ -452,20 +452,20 @@ run_list_command() {
 
                         if ! is_list_safe "$whitelist" "$list_command"; then
                             es="Not allowed for list operations, '$list_command'."
-                            es+=" Blocked by $app_dir/$DAPP_APP_CFG \n"
+                            es+=" Blocked by ${app_dir}/$DAPP_APP_CFG \n"
                             err "$es"
 
                             not_in_whitelist=1
                         fi
                         ;;
                 esac
-            done < "$app_dir/$DAPP_APP_CFG"
+            done < "${app_dir}/$DAPP_APP_CFG"
 
             (( not_in_whitelist )) && continue
         fi
 
         if [[ "${DAPP_RUN_MODE:-cd}" == "cd" ]]; then
-            pushd "$app_dir" &>/dev/null || exit
+            pushd "${app_dir}" &>/dev/null || exit
 
             if [[ -n "${SHORTCUT_D_ARGS_1:-}" ]]; then
                 "${compose_cmd[@]}"  "${SHORTCUT_D_ARGS_1[@]}" \
@@ -479,11 +479,11 @@ run_list_command() {
 
         else
             if [[ -n "${SHORTCUT_D_ARGS_1:-}" ]]; then
-                "${compose_cmd[@]}" -f "$app_dir/$compose_file" "${SHORTCUT_D_ARGS_1[@]}" \
+                "${compose_cmd[@]}" -f "${app_dir}/${compose_file}" "${SHORTCUT_D_ARGS_1[@]}" \
                 && \
-                "${compose_cmd[@]}" -f "$app_dir/$compose_file" "${SHORTCUT_D_ARGS_2[@]}" || rc=1
+                "${compose_cmd[@]}" -f "${app_dir}/${compose_file}" "${SHORTCUT_D_ARGS_2[@]}" || rc=1
             else
-                "${compose_cmd[@]}" -f "$app_dir/$compose_file" "${SHORTCUT_ARGS[@]}" || rc=1
+                "${compose_cmd[@]}" -f "${app_dir}/${compose_file}" "${SHORTCUT_ARGS[@]}" || rc=1
             fi
         fi
 
@@ -506,7 +506,7 @@ save_status_to_file() {
     fi
     local path="$output_file"
     if [[ "$path" != /* ]]; then
-        path="$PWD/$path"
+        path="${PWD}/$path"
     fi
     mkdir -p "$(dirname "$path")" || {
         err "Unable to create directory for $path"
@@ -521,15 +521,15 @@ save_status_to_file() {
     local -a apps=()
     mapfile -t apps < <(get_all_apps)
     for app in "${apps[@]}"; do
-        app_dir="$DAPP_DIR/$app"
-        compose_file="$(find_compose_file "$app_dir")" || continue
-        if "${compose_cmd[@]}" -f "$app_dir/$compose_file" ps -q 2>/dev/null | grep -q .; then
+        app_dir="${DAPP_DIR}/${app}"
+        compose_file="$(find_compose_file "${app_dir}")" || continue
+        if "${compose_cmd[@]}" -f "${app_dir}/${compose_file}" ps -q 2>/dev/null | grep -q .; then
             status="running"
         else
             status="stopped"
         fi
         if [[ "$status" == "$target_status" ]]; then
-            printf '%s\n' "$app" >> "$path"
+            printf '%s\n' "${app}" >> "$path"
         fi
     done
     echo "Saved apps with status '$target_status' to $path"
@@ -818,9 +818,9 @@ is_dcd_installed() {
     local BRC="$_DCD_TARGET"
     local m="dcd: present in ${BRC}"
 
-    if grep -qF 'dcd() {' "$BRC"; then
+    if grep -qF 'dcd() {' "${BRC}"; then
         echo "${m}, true"
-        log "Existing dcd block found in $BRC"
+        log "Existing dcd block found in ${BRC}"
         return 0
     else
         echo "${m}, false"
@@ -881,32 +881,32 @@ EOF
     local line="$DCD_CMD"
     local BRC="$_DCD_TARGET"
 
-    if [[ ! -f "$BRC" ]]; then
+    if [[ ! -f "${BRC}" ]]; then
         local bn
-        bn="$(basename "$BRC")"
+        bn="$(basename "${BRC}")"
 
         echo "You do not appear to have a ${bn} file."
         echo "dcd requires a ${bn} file to work."
 
-        log "$BRC does not exist; creating"
+        log "${BRC} does not exist; creating"
 
         if ! yn_answer "Do you want me to create a ${bn} file for you"; then
             echo "Aborting..."
             exit 1
         fi
 
-        if ! touch "$BRC"; then
-            err "dcd: $BRC cannot be created, installation failed"
+        if ! touch "${BRC}"; then
+            err "dcd: ${BRC} cannot be created, installation failed"
             exit 1
         else
-            echo "dcd: Created, $BRC"
+            echo "dcd: Created, ${BRC}"
         fi
     fi
 
-    log "Appending dcd function to $BRC"
-    echo "dcd: Writing to $BRC"
-    printf "%s\n" "" >> "$BRC"
-    printf "%s\n" "$line" >> "$BRC"
+    log "Appending dcd function to ${BRC}"
+    echo "dcd: Writing to ${BRC}"
+    printf "%s\n" "" >> "${BRC}"
+    printf "%s\n" "$line" >> "${BRC}"
 
     cat << EOF
 
@@ -915,7 +915,7 @@ Logout/in to use
         source ~/.bashrc  # For immediate use
 
 
-✅ dcd function for user '$USER' installed to $BRC
+✅ dcd function for user '$USER' installed to ${BRC}
 EOF
 }
 
@@ -928,15 +928,15 @@ uninstall_dcd() {
 
     echo "dcd: Checking if installed for user, $user"
 
-    if [[ -f "$BRC" ]]; then
+    if [[ -f "${BRC}" ]]; then
 
         if ! is_dcd_installed; then
             return
         fi
 
-        log "Removing dcd block from $BRC"
+        log "Removing dcd block from ${BRC}"
 
-        if ! sed -i '/^dcd() {/,/complete -F _dcd_completions dcd/d' "$BRC";
+        if ! sed -i '/^dcd() {/,/complete -F _dcd_completions dcd/d' "${BRC}";
         then
             err "dcd: Removal failure"
             exit 1
@@ -944,7 +944,7 @@ uninstall_dcd() {
 
         echo "✅ dcd: Function removed for $user, user must logout to complete."
     else
-        echo "dcd: $user has no file, $BRC"
+        echo "dcd: $user has no file, ${BRC}"
     fi
 }
 
@@ -952,12 +952,12 @@ download_content() {
     local url="$1"
 
     if command -v curl >/dev/null 2>&1; then
-        curl -fsSL "$url"
+        curl -fsSL "${url}"
         return $?
     fi
 
     if command -v wget >/dev/null 2>&1; then
-        wget -qO- "$url"
+        wget -qO- "${url}"
         return $?
     fi
 
@@ -969,12 +969,12 @@ download_latest() {
     local dst="$2"
 
     if command -v curl >/dev/null 2>&1; then
-        curl -fsSL "$url" -o "$dst"
+        curl -fsSL "${url}" -o "$dst"
         return $?
     fi
 
     if command -v wget >/dev/null 2>&1; then
-        wget -qO "$dst" "$url"
+        wget -qO "$dst" "${url}"
         return $?
     fi
 
@@ -983,7 +983,7 @@ download_latest() {
 
 remote_version() {
     local url="$1"
-    download_content "$url" | grep -m1 '^DAPP_VERSION=' | sed -E 's/^DAPP_VERSION="([^"]+)".*/\1/' || true
+    download_content "${url}" | grep -m1 '^DAPP_VERSION=' | sed -E 's/^DAPP_VERSION="([^"]+)".*/\1/' || true
 }
 
 version_compare() {
@@ -1009,19 +1009,19 @@ version_compare() {
 self_update() {
     local url="${DAPP_SELF_UPDATE_URL:-}"
 
-    if [[ -z "$url" || "$url" == *"<"* || "$url" == *">"* ]]; then
+    if [[ -z "${url}" || "${url}" == *"<"* || "${url}" == *">"* ]]; then
         err "DAPP_SELF_UPDATE_URL is not configured. Set it to the raw GitHub URL for this script."
         return 1
     fi
 
     local remote_ver
-    remote_ver="$(remote_version "$url")" || {
-        err "Unable to fetch remote version from $url"
+    remote_ver="$(remote_version "${url}")" || {
+        err "Unable to fetch remote version from ${url}"
         return 1
     }
 
     if [[ -z "$remote_ver" ]]; then
-        err "Could not parse remote version from $url"
+        err "Could not parse remote version from ${url}"
         return 1
     fi
 
@@ -1051,7 +1051,7 @@ self_update() {
         return 1
     }
 
-    if ! download_latest "$url" "$tmp"; then
+    if ! download_latest "${url}" "$tmp"; then
         rm -f "$tmp"
         err "Failed to download latest version"
         return 1
@@ -1193,20 +1193,20 @@ uninstall_self() {
 
 edit_app() {
     local app="$1"
-    local dir="$DAPP_DIR/$app"
+    local dir="${DAPP_DIR}/${app}"
 
-    [[ -d "$dir" ]] || {
-        err "Docker App '$app' not found under $DAPP_DIR"
+    [[ -d "${dir}" ]] || {
+        err "Docker App '${app}' not found under ${DAPP_DIR}"
         return 1
     }
 
     local compose
-    compose="$(find_compose_file "$dir")" || {
+    compose="$(find_compose_file "${dir}")" || {
         err "No compose file found"
         return 1
     }
 
-    "${DAPP_EDITOR:-nano}" "$dir/$compose"
+    "${DAPP_EDITOR:-nano}" "${dir}/$compose"
 }
 
 require_compose() {
@@ -1236,15 +1236,15 @@ status_all() {
     local app
 
     while read -r app; do
-        local dir="$DAPP_DIR/$app"
+        local dir="${DAPP_DIR}/${app}"
         local compose
 
-        compose="$(find_compose_file "$dir")" || continue
+        compose="$(find_compose_file "${dir}")" || continue
 
-        if "${compose_cmd[@]}" -f "$dir/$compose" ps -q 2>/dev/null | grep -q .; then
-            printf "%-25s running\n" "$app"
+        if "${compose_cmd[@]}" -f "${dir}/$compose" ps -q 2>/dev/null | grep -q .; then
+            printf "%-25s running\n" "${app}"
         else
-            printf "%-25s stopped\n" "$app"
+            printf "%-25s stopped\n" "${app}"
         fi
     done < <(list_apps)
 }
@@ -1256,7 +1256,7 @@ case "${1:-}" in
     --install-dcd) install_dcd; exit 0 ;;
     --self-update) self_update; exit 0 ;;
     --list-apps) list_apps; exit 0 ;;
-    --apps-folder) echo "$DAPP_DIR"; exit 0 ;;
+    --apps-folder) echo "${DAPP_DIR}"; exit 0 ;;
     -v|version) echo "dapp version ${DAPP_VERSION}"; exit 0 ;;
     -h|--help) print_help; exit 0 ;;
     @ls) list_apps; exit 0 ;;
@@ -1281,12 +1281,12 @@ if [[ $# -eq 0 ]]; then
 fi
 
 # Local mode
-if find_compose_file "$PWD" >/dev/null 2>&1; then
-    if [[ ! -d "$DAPP_DIR/$1" ]]; then
+if find_compose_file "${PWD}" >/dev/null 2>&1; then
+    if [[ ! -d "${DAPP_DIR}/$1" ]]; then
         expand_shortcut_args "$@"
         set -- "${SHORTCUT_ARGS[@]}"
 
-        compose_file="$(find_compose_file "$PWD")"
+        compose_file="$(find_compose_file "${PWD}")"
         require_compose
 
         if [[ -n "${SHORTCUT_D_ARGS_1:-}" ]]; then
@@ -1297,9 +1297,9 @@ if find_compose_file "$PWD" >/dev/null 2>&1; then
         fi
 
         if [[ "${DAPP_RUN_MODE}" == "cd" ]]; then
-            "${compose_cmd[@]}" -f "$compose_file" "$@"
+            "${compose_cmd[@]}" -f "${compose_file}" "$@"
         else
-        "${compose_cmd[@]}" -f "$compose_file" "$@"
+        "${compose_cmd[@]}" -f "${compose_file}" "$@"
         fi
 
         exit $?
@@ -1307,50 +1307,50 @@ if find_compose_file "$PWD" >/dev/null 2>&1; then
 fi
 
 app="$1"
-app_dir="$DAPP_DIR/$app"
+app_dir="${DAPP_DIR}/${app}"
 
-[[ -d "$app_dir" ]] || {
-    err "No compose file here and Docker App '$app' not found under $DAPP_DIR"
+[[ -d "${app_dir}" ]] || {
+    err "No compose file here and Docker App '${app}' not found under ${DAPP_DIR}"
     exit 1
 }
 
 case "${2:-}" in
-    path) echo "$app_dir"; exit 0 ;;
-    edit) edit_app "$app"; exit $? ;;
+    path) echo "${app_dir}"; exit 0 ;;
+    edit) edit_app "${app}"; exit $? ;;
 esac
 
-compose_file="$(find_compose_file "$app_dir")" || {
-    err "No compose file found in $app_dir"
+compose_file="$(find_compose_file "${app_dir}")" || {
+    err "No compose file found in ${app_dir}"
     exit 1
 }
 
 cmd="${2:-ps}"
 
-expand_shortcut_args "$cmd" "${@:3}"
+expand_shortcut_args "${cmd}" "${@:3}"
 
 cmd="${SHORTCUT_ARGS[0]}"
-set -- "$app" "${SHORTCUT_ARGS[@]}"
+set -- "${app}" "${SHORTCUT_ARGS[@]}"
 
-pushd "$app_dir" >/dev/null || exit 1
+pushd "${app_dir}" >/dev/null || exit 1
 
 require_compose
 
 if [[ -n "${SHORTCUT_D_ARGS_1:-}" ]]; then
-    "${compose_cmd[@]}" -f "$compose_file" "${SHORTCUT_D_ARGS_1[@]}" \
+    "${compose_cmd[@]}" -f "${compose_file}" "${SHORTCUT_D_ARGS_1[@]}" \
     && \
-    "${compose_cmd[@]}" -f "$compose_file" "${SHORTCUT_D_ARGS_2[@]}"
+    "${compose_cmd[@]}" -f "${compose_file}" "${SHORTCUT_D_ARGS_2[@]}"
 
     popd >/dev/null || true
     exit $?
 fi
 
 "${compose_cmd[@]}" \
-    -f "$compose_file" \
-    "$cmd" \
+    -f "${compose_file}" \
+    "${cmd}" \
     "${@:3}"
 
 rc=$?
 
 popd >/dev/null || true
 
-exit "$rc"
+exit "${rc}"

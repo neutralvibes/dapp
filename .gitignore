@@ -1,4 +1,5 @@
 *.code-workspace
 .vscode
 gpg_public_key.asc
+BEFORE_COMMIT_CHECK.md
 
