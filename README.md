@@ -121,20 +121,16 @@ An **app name** in `dapp` is just the sub-folder name (e.g. `nginx`, `grafana`) 
 
 ## Installation
 
-### 1. Download
+### 1. Get dapp
+
 
 ```bash
-curl -L https://github.com/neutralvibes/dapp/archive/refs/heads/main.tar.gz \
-    | sudo tar -xz -C /opt
+ curl -L https://raw.githubusercontent.com/neutralvibes/dapp/refs/heads/main/get_dapp | chmod +x get_dapp && sudo ./get_dapp
 ```
 
-### 2. Install
+_You can look at the source for `get_app`. It is always a good idea to see what is happening with install methods like these._
 
-```bash
-sudo /opt/dapp_cmd/dapp_cmd --install
-```
-
-### 3. Install `dcd` _(optional)_
+### 2. Install `dcd` _(optional)_
 
 Run this for each user who needs the `dcd` directory-switching helper:
 

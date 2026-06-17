@@ -1,0 +1,51 @@
+#!/bin/env bash
+#
+#=============================================================
+# AUTHOR: neutralvibes
+# ORIGIN: https://github.com/neutralvibes/dapp
+#=============================================================
+# DISCLAIMER:
+#
+# This script is an independent third-party tool.
+# It is NOT affiliated with, endorsed by, or connected to Docker, Inc.
+# Docker is a trademark of Docker, Inc.
+
+# This script is provided "AS IS" without warranty of any kind.
+# The author assumes no liability for data loss or damage.
+# Test thoroughly in a non-production environment before use.
+#=============================================================
+#
+
+if (( EUID != 0 )); then
+    cat << EOF
+Need root to run get_dapp
+
+    Try:
+        sudo ./get_dapp
+
+EOF
+    exit 1
+fi
+
+src="https://github.com/neutralvibes/dapp/archive/refs/heads/main.tar.gz"
+dest="/opt/dapp_cmd"
+
+if ! mkdir -p "${dest}"; then
+    echo "Unable to create ${dest} folder"
+    exit 1
+fi
+
+if ! curl -L "${src}"  \
+    | tar -xz --strip-components=1 -C "${dest}" dapp-main/ ; then
+
+    echo "Unfortunately there was a problem downloading or decompressing dapp. Please try again."
+fi
+
+chmod +x "${dest}/dapp_cmd"
+
+if ! "${dest}/dapp_cmd" --install; then
+    echo -e "\nHuston, there is a problem"
+else
+    rm  get_dapp
+fi
+
