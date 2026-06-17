@@ -18,12 +18,11 @@
 set -u
 set -o pipefail
 
-DAPP_VERSION="${DAPP_VERSION:-0.1.0}"
+DAPP_VERSION="${DAPP_VERSION:-0.0.1}"
 
 SCRIPT_PATH="$(readlink -f "${BASH_SOURCE[0]}" 2>/dev/null || realpath "${BASH_SOURCE[0]}" 2>/dev/null || echo "${BASH_SOURCE[0]}")"
 SCRIPT_DIR="$(cd "$(dirname "${SCRIPT_PATH}")" >/dev/null 2>&1 && pwd)"
 DAPP_CONFIG_FILE="${SCRIPT_DIR}/.config"
-
 DAPP_DIR="${DAPP_DIR:-}"
 
 cfg_value() {
@@ -37,12 +36,14 @@ cfg_value() {
 load_config() {
     local config_file="${1:?'Config file not specified'}"
     local valid_keys="${2:?'Config valid keys not specified'}"
+    local key value result
 
     if [[ -f  "${config_file}" ]]; then
         while IFS='=' read -r key value; do
             if [[ "${key}" =~ ^(${valid_keys})$ ]]; then
                 if [[ -z "${!key:-}" ]]; then
-                    printf -v "${key}" "%s" "$(cfg_value "${value}")"
+                    result="$(cfg_value "${value}")"
+                    printf -v "${key}" "%s" "${result}"
                 fi
             fi
         done < "${config_file}"
@@ -170,7 +171,7 @@ list_apps() {
     done
 
     # Check array length instead of using a flag variable
-    if [ ${#apps[@]} -eq 0 ]; then
+    if [[ ${#apps[@]} -eq 0 ]]; then
         echo "NO-DOCKER-APPS-FOUND, under dapps folder ${DAPP_DIR}"
     else
         # Sort and display the found apps
@@ -239,7 +240,7 @@ is_list_safe() {
             fi
 
         # flag: Allow-list / ONLY these flags
-        elif [[ "$pattern" == flag:* ]]; then
+        elif [[ "${pattern}" == flag:* ]]; then
             local remainder="${pattern#flag:}"
             local allowed_flags="${remainder%%:*}"
             local actual_cmd="${remainder#*:}"
@@ -406,9 +407,10 @@ run_list_command() {
 
     if ! is_list_safe "${DAPP_LIST_SAFE}" "${list_command}"; then
 
-        case $list_command in
+        case ${list_command} in
          up) suggest="up -d";;
          logs\ -f) suggest="logs";;
+         *);;
         esac
 
         [[ -n "${suggest:-}" ]] && maybe="Did you mean '${suggest}' ?"
@@ -463,6 +465,7 @@ run_list_command() {
                             not_in_whitelist=1
                         fi
                         ;;
+                    *);;
                 esac
             done < "${app_dir}/${DAPP_APP_CFG}"
 
@@ -957,25 +960,29 @@ uninstall_dcd() {
 
 download_content() {
     local url="$1"
+    local dest_dir="${2:-}"  # Empty = stdout mode
 
     if command -v curl >/dev/null 2>&1; then
-        curl -fsSL "${url}"
-        return $?
+        if [[ -n "${dest_dir}" ]]; then
+            curl -qsf -O --create-dirs --output-dir "${dest_dir}" "${url}"
+        else
+            curl -fsSL "${url}"
+        fi
+    elif command -v wget >/dev/null 2>&1; then
+        if [[ -n "${dest_dir}" ]]; then
+            wget -qP "${dest_dir}" "${url}"
+        else
+            wget -qO- "${url}"
+        fi
+    else
+        err "Neither curl nor wget available" >&2
+        return 1
     fi
-
-    if command -v wget >/dev/null 2>&1; then
-        wget -qO- "${url}"
-        return $?
-    fi
-
-    return 1
 }
 
 download_latest() {
     local url="$1"
     local dst="$2"
-
-    echo "Retrieving update information"
 
     if command -v curl >/dev/null 2>&1; then
         curl -fsSL "${url}" -o "${dst}"
@@ -1018,7 +1025,6 @@ version_compare() {
 }
 
 self_update() {
-    set -x
     local url="${DAPP_SELF_UPDATE_BASE_URL:-}"
 
     if [[ -z "${url}" || "${url}" == *"<"* || "${url}" == *">"* ]]; then
@@ -1032,26 +1038,35 @@ self_update() {
         return 1
     }
 
-    echo "Remote version: ${remote_ver}"
+    cat << EOF
+Current version: ${DAPP_VERSION}
+Remote version: ${remote_ver}
+EOF
 
     if [[ -z "${remote_ver}" ]]; then
         err "Could not parse remote version from ${url}"
         return 1
     fi
 
+    local update_msg="Update required:"
+
     version_compare "${DAPP_VERSION}" "${remote_ver}"
 
     case $? in
         0)
-            echo "✅ dapp is already up to date (version ${DAPP_VERSION})"
+            echo "dapp is already up to date"
             return 0
             ;;
         2)
-            echo "✅ Remote version (${remote_ver}) is not newer than current version (${DAPP_VERSION})"
+            echo "${update_msg} no"
+            echo "Remote version (${remote_ver}) is not newer than current version (${DAPP_VERSION})"
             return 0
             ;;
+        *);;
+
     esac
 
+    echo "${update_msg} yes"
     if [[ "${DAPP_ALLOW_USER_INSTALL:-}" != "1" ]]; then
         require_root
     fi
@@ -1080,8 +1095,59 @@ self_update() {
 
     chmod +x "${tmp}"
     mv "${tmp}" "${target}"
-
+    get_required_files
     echo "✅ Updated dapp from version ${DAPP_VERSION} to ${remote_ver} at ${target}"
+}
+
+get_required_files() {
+    # Files needed by dapp
+    # Array format per line: FILENAME  "" or "+x"
+    # Second colmn used for chmod. If "+x" exe bit will be set
+    local required_files=(
+        ".config"       ""      \
+        "README.md"     ""      \
+        )
+
+    local fn
+    local tfolder="/tmp/dapp/required_files"
+    local cmod
+    local status
+
+    mkdir -p "${tfolder}"
+
+    for ((i=0; i< ${#required_files[@]}; i+=2)); do
+        local file="${required_files[i]}"
+
+        fn="${SCRIPT_DIR:-}/${file}"
+
+        if [[ ! -f "${fn}" ]]; then
+
+            echo "Reterieving required file: ${file} "
+
+            if ! download_content "${DAPP_SELF_UPDATE_BASE_URL}/${file}" "${tfolder}"; then
+                err "Could not retrieve required file ${file} to ${tfolder}"
+                return 1
+            else
+                status="ok"
+                cmod="${required_files[((i + 1))]}"
+
+                if [[ "${cmod}"  == "+x" ]]; then
+                    chmod +x "${fn}"
+                fi
+            fi
+
+        fi
+    done
+
+    if [[ -n "${status}" ]]; then
+        if ! mv -v "${tfolder}/*.*" "${SCRIPT_DIR}"; then
+            err "Unable to move required files for dapp"
+            return 1
+        fi
+    fi
+
+    return 0
+
 }
 
 get_dapp_install_target() {
@@ -1145,6 +1211,11 @@ install_self() {
     if ! "${target}" --autocomplete | tee "${completion_dir}/dapp" >/dev/null; then
         err "Warning: Autocomplete registration failed; continuing without completion."
         err "Check permissions for ${completion_dir} or set DAPP_COMPLETION_DIR to a writable path."
+    fi
+
+    if ! get_required_files; then
+        err "Need a internet connection to reterive required file(s)"
+        exit 1
     fi
 
     cat << EOF
@@ -1287,6 +1358,7 @@ case "${1:-}" in
     # Used internally for completion services
     --autocomplete) print_dapp_autocomplete; exit 0 ;;
     --autocomplete-data) print_autocomplete_data; exit 0;;
+    *);;
 esac
 
 # No param list apps
@@ -1332,6 +1404,7 @@ app_dir="${DAPP_DIR}/${app}"
 case "${2:-}" in
     path) echo "${app_dir}"; exit 0 ;;
     edit) edit_app "${app}"; exit $? ;;
+    *) ;;
 esac
 
 compose_file="$(find_compose_file "${app_dir}")" || {
