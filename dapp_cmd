@@ -50,13 +50,16 @@ load_config() {
 }
 
 load_config \
-    "$DAPP_CONFIG_FILE" \
+    "${DAPP_CONFIG_FILE}" \
         "DAPP_DIR|DAPP_EDITOR|DAPP_LIST_SAFE|DAPP_RUN_MODE"
 
 DAPP_DIR="${DAPP_DIR:-/opt/dapps}"
 DAPP_RUN_MODE="${DAPP_RUN_MODE:-cd}"
 
-DAPP_SELF_UPDATE_URL="${DAPP_SELF_UPDATE_URL:-https://raw.githubusercontent.com/neutralvibes/dapp/main/dapp_cmd}"
+DAPP_SELF_UPDATE_BASE_URL="${DAPP_SELF_UPDATE_BASE_URL:-https://raw.githubusercontent.com/neutralvibes/dapp/refs/heads/main}"
+DAPP_SELF_UPDATE_VERSION_URL="${DAPP_SELF_UPDATE_BASE_URL}/VERSION"
+DAPP_SELF_UPDATE_APP_URL="${DAPP_SELF_UPDATE_BASE_URL}/dapp_cmd"
+
 DAPP_APP_CFG=".dapp"
 
 ORIG_CMD="$*"
@@ -95,7 +98,7 @@ yn_answer() {
 
    while true; do
         read -rp "$1 (Y/N) [N] ? " answer
-        case "$answer" in
+        case "${answer}" in
             [yY]) return 0 ;;
             *) return 1 ;;
         esac
@@ -196,7 +199,7 @@ normalize_whitelist() {
     local value="$1"
     value="${value//$'\r'/}"
     value="${value//$'\n'/;}"
-    echo "$value"
+    echo "${value}"
 }
 
 is_list_safe() {
@@ -213,17 +216,17 @@ is_list_safe() {
         pattern="${pattern#"${pattern%%[![:space:]]*}"}"
         pattern="${pattern%"${pattern##*[![:space:]]}"}"
 
-        [[ -z "$pattern" ]] && continue
+        [[ -z "${pattern}" ]] && continue
 
         # strict: Match only
-        if [[ "$pattern" == strict:* ]]; then
+        if [[ "${pattern}" == strict:* ]]; then
             local actual_cmd="${pattern#strict:}"
             if [[ "${cmdline}" =~ ^${actual_cmd}$ ]]; then
                 return 0
             fi
 
         # noflag: Block-list ARGS
-        elif [[ "$pattern" == noflag:* ]]; then
+        elif [[ "${pattern}" == noflag:* ]]; then
             local remainder="${pattern#noflag:}"
             local banned_flags="${remainder%%:*}"
             local actual_cmd="${remainder#*:}"
@@ -242,23 +245,23 @@ is_list_safe() {
             local actual_cmd="${remainder#*:}"
 
             if [[ "${cmdline}" =~ ^${actual_cmd}([[:space:]]|$) ]]; then
-                local args="${cmdline#"$actual_cmd"}"
+                local args="${cmdline#"${actual_cmd}"}"
 
                 # no arguments left
                 [[ -z "${args//[[:space:]]/}" ]] && return 0
 
                 local safe=0
-                read -ra arg_list <<< "$args"
+                read -ra arg_list <<< "${args}"
                 for arg in "${arg_list[@]}"; do
-                    if [[ "$arg" == -* ]]; then
-                        if [[ ! "$arg" =~ ^${allowed_flags}$ ]]; then
+                    if [[ "${arg}" == -* ]]; then
+                        if [[ ! "${arg}" =~ ^${allowed_flags}$ ]]; then
                             safe=1 # Banned flag!
                             break
                         fi
                     fi
                 done
 
-                if [[ $safe -eq 0 ]]; then
+                if [[ ${safe} -eq 0 ]]; then
                     return 0
                 fi
             fi
@@ -298,10 +301,10 @@ EOF
     safe="$(normalize_whitelist "${DAPP_LIST_SAFE:-ps;up -d;down;restart;pull;start;stop}")"
     local IFS=';'
     local pattern
-    for pattern in $safe; do
+    for pattern in ${safe}; do
         pattern="${pattern#"${pattern%%[![:space:]]*}"}"
         pattern="${pattern%"${pattern##*[![:space:]]}"}"
-        [[ -n "$pattern" ]] && printf '  %s\n' "$pattern"
+        [[ -n "${pattern}" ]] && printf '  %s\n' "${pattern}"
     done
 }
 
@@ -309,7 +312,7 @@ parse_app_list() {
     local list="$1"
     local app
     local IFS=','
-    read -ra apps <<< "$list"
+    read -ra apps <<< "${list}"
     for app in "${apps[@]}"; do
         app="${app#"${app%%[![:space:]]*}"}"
         app="${app%"${app##*[![:space:]]}"}"
@@ -321,26 +324,27 @@ expand_path() {
     local path="$1"
 
     # shellcheck disable=SC2088
-    if [[ "$path" == "~" ]]; then
-        echo "$HOME"
-    elif [[ "$path" == "~/"* ]]; then
+    if [[ "${path}" == "~" ]]; then
+        echo "${HOME}"
+    elif [[ "${path}" == "~/"* ]]; then
         echo "${HOME}/${path#\~/}"
-    elif [[ "$path" == "~"* ]]; then
-        echo "$path"
+    elif [[ "${path}" == "~"* ]]; then
+        echo "${path}"
     else
-        echo "$path"
+        echo "${path}"
     fi
 }
 
 read_apps_from_file() {
     local path
     path="$(expand_path "$1")"
-    if [[ "$path" != /* ]]; then
-        path="${PWD}/$path"
+
+    if [[ "${path}" != /* ]]; then
+        path="${PWD}/${path}"
     fi
 
-    if [[ ! -f "$path" ]]; then
-        err "List file not found: $path"
+    if [[ ! -f "${path}" ]]; then
+        err "List file not found: ${path}"
         exit 1
     fi
 
@@ -350,12 +354,13 @@ read_apps_from_file() {
         app="${app%"${app##*[![:space:]]}"}"
         [[ -z "${app}" || "${app}" == \#* ]] && continue
         printf '%s\n' "${app}"
-    done < "$path"
+    done < "${path}"
 }
 
 get_apps_for_list_source() {
     local source="$1"
-    case "$source" in
+
+    case "${source}" in
         @list-all)
             get_all_apps
             ;;
@@ -399,23 +404,23 @@ run_list_command() {
         list_command="${SHORTCUT_ARGS[*]}"
     fi
 
-    if ! is_list_safe "$DAPP_LIST_SAFE" "$list_command"; then
+    if ! is_list_safe "${DAPP_LIST_SAFE}" "${list_command}"; then
 
         case $list_command in
          up) suggest="up -d";;
          logs\ -f) suggest="logs";;
         esac
 
-        [[ -n "${suggest:-}" ]] && maybe="Did you mean '$suggest' ?"
-        err "Not allowed for list operations, '$list_command'. ${maybe:-}"
+        [[ -n "${suggest:-}" ]] && maybe="Did you mean '${suggest}' ?"
+        err "Not allowed for list operations, '${list_command}'. ${maybe:-}"
         exit 1
     fi
 
     local -a apps=()
-    mapfile -t apps < <(get_apps_for_list_source "$source")
+    mapfile -t apps < <(get_apps_for_list_source "${source}")
 
     if [[ ${#apps[@]} -eq 0 ]]; then
-        err "No apps found for $source"
+        err "No apps found for ${source}"
         exit 1
     fi
 
@@ -441,25 +446,25 @@ run_list_command() {
             continue
         }
 
-        if [[ -f "${app_dir}/$DAPP_APP_CFG" ]]; then
+        if [[ -f "${app_dir}/${DAPP_APP_CFG}" ]]; then
             local not_in_whitelist=0
 
             while IFS='=' read -r key value; do
-                case "$key" in
+                case "${key}" in
                     DAPP_LIST_SAFE)
                         local whitelist
-                        whitelist="$(cfg_value "$value")"
+                        whitelist="$(cfg_value "${value}")"
 
-                        if ! is_list_safe "$whitelist" "$list_command"; then
-                            es="Not allowed for list operations, '$list_command'."
-                            es+=" Blocked by ${app_dir}/$DAPP_APP_CFG \n"
-                            err "$es"
+                        if ! is_list_safe "${whitelist}" "${list_command}"; then
+                            es="Not allowed for list operations, '${list_command}'."
+                            es+=" Blocked by ${app_dir}/${DAPP_APP_CFG} \n"
+                            err "${es}"
 
                             not_in_whitelist=1
                         fi
                         ;;
                 esac
-            done < "${app_dir}/$DAPP_APP_CFG"
+            done < "${app_dir}/${DAPP_APP_CFG}"
 
             (( not_in_whitelist )) && continue
         fi
@@ -490,30 +495,32 @@ run_list_command() {
         echo -e "\n"
 
     done
-    return "$rc"
+    return "${rc}"
 }
 
 save_status_to_file() {
     local target_status="$1"
     local output_file="$2"
-    if [[ -z "$target_status" || -z "$output_file" ]]; then
+    if [[ -z "${target_status}" || -z "${output_file}" ]]; then
         err "Usage: dapp @save-status (running|stopped) PATH_TO_FILE"
         exit 1
     fi
-    if [[ "$target_status" != "running" && "$target_status" != "stopped" ]]; then
-        err "Unsupported status '$target_status'. Use 'running' or 'stopped'."
+    if [[ "${target_status}" != "running" && "${target_status}" != "stopped" ]]; then
+        err "Unsupported status '${target_status}'. Use 'running' or 'stopped'."
         exit 1
     fi
-    local path="$output_file"
-    if [[ "$path" != /* ]]; then
-        path="${PWD}/$path"
+    local path="${output_file}"
+    if [[ "${path}" != /* ]]; then
+        path="${PWD}/${path}"
     fi
-    mkdir -p "$(dirname "$path")" || {
-        err "Unable to create directory for $path"
+    mkdir -p "$(dirname "${path}")" || {
+        err "Unable to create directory for ${path}"
         exit 1
     }
-    : > "$path"
+    : > "${path}"
+
     require_compose
+
     local app
     local status
     local app_dir
@@ -528,19 +535,19 @@ save_status_to_file() {
         else
             status="stopped"
         fi
-        if [[ "$status" == "$target_status" ]]; then
-            printf '%s\n' "${app}" >> "$path"
+        if [[ "${status}" == "${target_status}" ]]; then
+            printf '%s\n' "${app}" >> "${path}"
         fi
     done
-    echo "Saved apps with status '$target_status' to $path"
+    echo "Saved apps with status '${target_status}' to ${path}"
 }
 
 ports_query() {
     local port=${1:-}
-    if [ -z "$port" ]; then
+    if [[ -z "${port}" ]]; then
         docker ps --format "table {{.Names}}\t{{.Ports}}"
     else
-        docker ps --filter "publish=$port" --format "table {{.Names}}\t{{.Image}}\t{{.Ports}}"
+        docker ps --filter "publish=${port}" --format "table {{.Names}}\t{{.Image}}\t{{.Ports}}"
     fi
 }
 
@@ -633,8 +640,8 @@ EXAMPLES:
   dapp redis exec cli ping      Ping redis
 
 ENVIRONMENT:
-  DAPP_DIR                      Docker apps directory, $DAPP_DIR
-  DAPP_EDITOR                   Editor for 'dapp APP edit', $DAPP_EDITOR
+  DAPP_DIR                      Docker apps directory, ${DAPP_DIR}
+  DAPP_EDITOR                   Editor for 'dapp APP edit', ${DAPP_EDITOR}
   DAPP_LIST_SAFE                Global whitelist for list operations
 
 For more info: https://github.com/neutralvibes/dapp
@@ -645,17 +652,17 @@ EOF
 NEW_ARGS=()
 
 for arg in "$@"; do
-    case "$arg" in
+    case "${arg}" in
         --yes|-y)
             DAPP_ASSUME_YES=1
             ;;
         *)
-            NEW_ARGS+=("$arg")
+            NEW_ARGS+=("${arg}")
             ;;
     esac
 done
 
-if [ "${#NEW_ARGS[@]}" -gt 0 ]; then
+if [[ "${#NEW_ARGS[@]}" -gt 0 ]]; then
     set -- "${NEW_ARGS[@]}"
 else
     set --
@@ -671,8 +678,8 @@ print_autocomplete_data() {
     # option completion
     options="${apps_list//$'\n'/' '} @ls @status @list-all @list= @list-file= @status-save @list-help -v -h --help --list-apps --apps-folder --install --uninstall --install-dcd --uninstall-dcd --self-update"
 
-    echo "$docker_commands"
-    echo "$options"
+    echo "${docker_commands}"
+    echo "${options}"
 }
 
 print_dapp_autocomplete() {
@@ -772,20 +779,20 @@ EOF
 
 set_dcd_target() {
     local fn='.bashrc'
-    local user="${1:-$USER}"
+    local user="${1:-${USER}}"
     local userhome
 
-    if [[ "$user" == "$USER" ]]; then
-        userhome="$HOME"
+    if [[ "${user}" == "${USER}" ]]; then
+        userhome="${HOME}"
     else
-        userhome=$(getent passwd "$user" | cut -d: -f6)
-        if [[ -z "$userhome" ]]; then
-            err "User: $user has no home directory"
+        userhome=$(getent passwd "${user}" | cut -d: -f6)
+        if [[ -z "${userhome}" ]]; then
+            err "User: ${user} has no home directory"
             return 1
         fi
     fi
 
-    _DCD_TARGET="$userhome/${DCD_FILE:-$fn}"
+    _DCD_TARGET="${userhome}/${DCD_FILE:-${fn}}"
 }
 
 set_dcd_var() {
@@ -815,7 +822,7 @@ EOF
 }
 
 is_dcd_installed() {
-    local BRC="$_DCD_TARGET"
+    local BRC="${_DCD_TARGET}"
     local m="dcd: present in ${BRC}"
 
     if grep -qF 'dcd() {' "${BRC}"; then
@@ -878,8 +885,8 @@ EOF
 
     set_dcd_var
 
-    local line="$DCD_CMD"
-    local BRC="$_DCD_TARGET"
+    local line="${DCD_CMD}"
+    local BRC="${_DCD_TARGET}"
 
     if [[ ! -f "${BRC}" ]]; then
         local bn
@@ -906,7 +913,7 @@ EOF
     log "Appending dcd function to ${BRC}"
     echo "dcd: Writing to ${BRC}"
     printf "%s\n" "" >> "${BRC}"
-    printf "%s\n" "$line" >> "${BRC}"
+    printf "%s\n" "${line}" >> "${BRC}"
 
     cat << EOF
 
@@ -915,18 +922,18 @@ Logout/in to use
         source ~/.bashrc  # For immediate use
 
 
-✅ dcd function for user '$USER' installed to ${BRC}
+✅ dcd function for user '${USER}' installed to ${BRC}
 EOF
 }
 
 uninstall_dcd() {
-    local user="${1:-$USER}"
+    local user="${1:-${USER}}"
 
-    set_dcd_target "$user"
+    set_dcd_target "${user}"
 
-    local BRC="$_DCD_TARGET"
+    local BRC="${_DCD_TARGET}"
 
-    echo "dcd: Checking if installed for user, $user"
+    echo "dcd: Checking if installed for user, ${user}"
 
     if [[ -f "${BRC}" ]]; then
 
@@ -942,9 +949,9 @@ uninstall_dcd() {
             exit 1
         fi
 
-        echo "✅ dcd: Function removed for $user, user must logout to complete."
+        echo "✅ dcd: Function removed for ${user}, user must logout to complete."
     else
-        echo "dcd: $user has no file, ${BRC}"
+        echo "dcd: ${user} has no file, ${BRC}"
     fi
 }
 
@@ -968,13 +975,15 @@ download_latest() {
     local url="$1"
     local dst="$2"
 
+    echo "Retrieving update information"
+
     if command -v curl >/dev/null 2>&1; then
-        curl -fsSL "${url}" -o "$dst"
+        curl -fsSL "${url}" -o "${dst}"
         return $?
     fi
 
     if command -v wget >/dev/null 2>&1; then
-        wget -qO "$dst" "${url}"
+        wget -qO "${dst}" "${url}"
         return $?
     fi
 
@@ -995,9 +1004,11 @@ version_compare() {
     for i in 0 1 2; do
         local ai=${a[i]:-0}
         local bi=${b[i]:-0}
+
         if (( ai < bi )); then
             return 1
         fi
+
         if (( ai > bi )); then
             return 2
         fi
@@ -1007,7 +1018,8 @@ version_compare() {
 }
 
 self_update() {
-    local url="${DAPP_SELF_UPDATE_URL:-}"
+    set -x
+    local url="${DAPP_SELF_UPDATE_BASE_URL:-}"
 
     if [[ -z "${url}" || "${url}" == *"<"* || "${url}" == *">"* ]]; then
         err "DAPP_SELF_UPDATE_URL is not configured. Set it to the raw GitHub URL for this script."
@@ -1015,24 +1027,27 @@ self_update() {
     fi
 
     local remote_ver
-    remote_ver="$(remote_version "${url}")" || {
+    remote_ver="$(remote_version "${DAPP_SELF_UPDATE_VERSION_URL}")" || {
         err "Unable to fetch remote version from ${url}"
         return 1
     }
 
-    if [[ -z "$remote_ver" ]]; then
+    echo "Remote version: ${remote_ver}"
+
+    if [[ -z "${remote_ver}" ]]; then
         err "Could not parse remote version from ${url}"
         return 1
     fi
 
-    version_compare "$DAPP_VERSION" "$remote_ver"
+    version_compare "${DAPP_VERSION}" "${remote_ver}"
+
     case $? in
         0)
-            echo "✅ dapp is already up to date (version $DAPP_VERSION)"
+            echo "✅ dapp is already up to date (version ${DAPP_VERSION})"
             return 0
             ;;
         2)
-            echo "✅ Remote version ($remote_ver) is not newer than current version ($DAPP_VERSION)"
+            echo "✅ Remote version (${remote_ver}) is not newer than current version (${DAPP_VERSION})"
             return 0
             ;;
     esac
@@ -1051,27 +1066,27 @@ self_update() {
         return 1
     }
 
-    if ! download_latest "${url}" "$tmp"; then
-        rm -f "$tmp"
+    if ! download_latest "${DAPP_SELF_UPDATE_APP_URL}" "${tmp}"; then
+        rm -f "${tmp}"
         err "Failed to download latest version"
         return 1
     fi
 
-    if ! grep -q '^#!/usr/bin/env bash' "$tmp"; then
-        rm -f "$tmp"
+    if ! grep -q '^#!/usr/bin/env bash' "${tmp}"; then
+        rm -f "${tmp}"
         err "Downloaded file does not look like a valid script"
         return 1
     fi
 
-    chmod +x "$tmp"
-    mv "$tmp" "$target"
+    chmod +x "${tmp}"
+    mv "${tmp}" "${target}"
 
-    echo "✅ Updated dapp from version $DAPP_VERSION to $remote_ver at $target"
+    echo "✅ Updated dapp from version ${DAPP_VERSION} to ${remote_ver} at ${target}"
 }
 
 get_dapp_install_target() {
     if [[ -n "${DAPP_INSTALL_TARGET:-}" ]]; then
-        echo "$DAPP_INSTALL_TARGET"
+        echo "${DAPP_INSTALL_TARGET}"
     elif [[ "${DAPP_ALLOW_USER_INSTALL:-}" == "1" ]]; then
         echo "${HOME}/.local/bin/dapp"
     else
@@ -1081,12 +1096,12 @@ get_dapp_install_target() {
 
 get_completion_dir() {
     if [[ -n "${DAPP_COMPLETION_DIR:-}" ]]; then
-        echo "$DAPP_COMPLETION_DIR"
+        echo "${DAPP_COMPLETION_DIR}"
         return
     fi
 
     if [[ "${DAPP_ALLOW_USER_INSTALL:-}" == "1" ]]; then
-        echo "${XDG_DATA_HOME:-$HOME/.local/share}/bash-completion/completions"
+        echo "${XDG_DATA_HOME:-${HOME}/.local/share}/bash-completion/completions"
         return
     fi
 
@@ -1111,25 +1126,25 @@ install_self() {
 
     src="$(readlink -f "$0" 2>/dev/null || realpath "$0" 2>/dev/null || echo "$0")"
 
-    if ! mkdir -p "$(dirname "$target")"; then
-        err "Unable to create,  $(dirname "$target")"
+    if ! mkdir -p "$(dirname "${target}")"; then
+        err "Unable to create,  $(dirname "${target}")"
         exit 1
     fi
 
-    if ! ln -sfn "$src" "$target"; then
-        err "Unable to link, $src->$target"
+    if ! ln -sfn "${src}" "${target}"; then
+        err "Unable to link, ${src}->${target}"
         exit 1
     fi
 
-    if ! mkdir -p "$completion_dir"; then
-        err "Unable to create completion directory, $completion_dir"
+    if ! mkdir -p "${completion_dir}"; then
+        err "Unable to create completion directory, ${completion_dir}"
         exit 1
     fi
 
     # Run 'dapp --autocomplete' then place code in completion folder
-    if ! "$target" --autocomplete | tee "$completion_dir/dapp" >/dev/null; then
+    if ! "${target}" --autocomplete | tee "${completion_dir}/dapp" >/dev/null; then
         err "Warning: Autocomplete registration failed; continuing without completion."
-        err "Check permissions for $completion_dir or set DAPP_COMPLETION_DIR to a writable path."
+        err "Check permissions for ${completion_dir} or set DAPP_COMPLETION_DIR to a writable path."
     fi
 
     cat << EOF
@@ -1168,7 +1183,7 @@ uninstall_self() {
     uninstall_dcd
 
     if [[ -n "${SUDO_USER:-}" ]]; then
-        uninstall_dcd "$SUDO_USER"
+        uninstall_dcd "${SUDO_USER}"
     fi
 
     # Now remove dapp
@@ -1178,13 +1193,13 @@ uninstall_self() {
     target="$(get_dapp_install_target)"
     completion_dir="$(get_completion_dir)"
 
-    if ! rm -f "$target"; then
-        err "dapp uninstall failed to remove, $target"
+    if ! rm -f "${target}"; then
+        err "dapp uninstall failed to remove, ${target}"
         exit 1
     fi
 
-    if ! rm -f "$completion_dir/dapp"; then
-        err "Failed to remove completion code , $completion_dir/dapp"
+    if ! rm -f "${completion_dir}/dapp"; then
+        err "Failed to remove completion code , ${completion_dir}/dapp"
         exit 1
     fi
     complete -r dapp 2>&1 /dev/null
@@ -1206,7 +1221,7 @@ edit_app() {
         return 1
     }
 
-    "${DAPP_EDITOR:-nano}" "${dir}/$compose"
+    "${DAPP_EDITOR:-nano}" "${dir}/${compose}"
 }
 
 require_compose() {
@@ -1241,7 +1256,7 @@ status_all() {
 
         compose="$(find_compose_file "${dir}")" || continue
 
-        if "${compose_cmd[@]}" -f "${dir}/$compose" ps -q 2>/dev/null | grep -q .; then
+        if "${compose_cmd[@]}" -f "${dir}/${compose}" ps -q 2>/dev/null | grep -q .; then
             printf "%-25s running\n" "${app}"
         else
             printf "%-25s stopped\n" "${app}"
