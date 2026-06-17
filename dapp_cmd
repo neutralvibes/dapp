@@ -1111,7 +1111,7 @@ get_required_files() {
     local fn
     local tfolder="/tmp/dapp/required_files"
     local cmod
-    local status
+    local status=""
 
     mkdir -p "${tfolder}"
 
