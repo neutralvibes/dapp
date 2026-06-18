@@ -28,8 +28,20 @@ if [[ -L "$DAPP_INSTALL_TARGET" || -f "$DAPP_INSTALL_TARGET" ]]; then
     echo "INSTALL: target exists: $DAPP_INSTALL_TARGET"
 else
     echo "INSTALL: target missing: $DAPP_INSTALL_TARGET" >&2
-    exit 2
+    exit 20
 fi
+
+# Verify version matches with VERSION file
+av="$(bash "$DAPP_SCRIPT" --version | cut -d ':' -f 2 | xargs)"
+vv="$(cat VERSION | grep -m1 '^DAPP_VERSION=' | sed -E 's/^DAPP_VERSION="([^"]+)".*/\1/')"
+
+if [[ "${av}" == "${vv}" ]]; then
+    echo "INSTALL: version, ${av} matches VERSION file, ${vv}"
+else
+    echo "INSTALL: version mismatch with VERSION file" >&2
+    exit 30
+fi
+unset aa vv
 
 # Verify completion file
 if [[ -f "$DAPP_COMPLETION_DIR/dapp" ]]; then
@@ -40,11 +52,11 @@ if [[ -f "$DAPP_COMPLETION_DIR/dapp" ]]; then
         cat "$DAPP_COMPLETION_DIR/dapp"
         echo "----"
         echo "INSTALL: completion file missing expected content" >&2
-        exit 3
+        exit 40
     fi
 else
     echo "INSTALL: completion file missing" >&2
-    exit 4
+    exit 41
 fi
 
 # Run uninstall
@@ -52,14 +64,14 @@ bash "$DAPP_SCRIPT" --yes --uninstall
 
 if [[ -f "$DAPP_INSTALL_TARGET" ]]; then
     echo "UNINSTALL: target still present" >&2
-    exit 5
+    exit 50
 else
     echo "UNINSTALL: target removed"
 fi
 
 if [[ -f "$DAPP_COMPLETION_DIR/dapp" ]]; then
     echo "UNINSTALL: completion still present" >&2
-    exit 6
+    exit 60
 else
     echo "UNINSTALL: completion removed"
 fi

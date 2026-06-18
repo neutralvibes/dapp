@@ -632,7 +632,7 @@ OPTIONS:
   --yes                         Assume yes for prompts (non-interactive)
 
   -h, --help                    Show this help message
-  -v                            Show dapp version
+  -v, --version                 Show dapp version
 
 EXAMPLES:
   dapp @ls                      List all apps
@@ -679,7 +679,7 @@ print_autocomplete_data() {
     docker_commands="path edit ps up down restart start stop logs ports-check pull pullup build config exec top images u ulf d l r"
 
     # option completion
-    options="${apps_list//$'\n'/' '} @ls @status @list-all @list= @list-file= @status-save @list-help -v -h --help --list-apps --apps-folder --install --uninstall --install-dcd --uninstall-dcd --self-update"
+    options="${apps_list//$'\n'/' '} @ls @status @list-all @list= @list-file= @status-save @list-help -v --version -h --help --list-apps --apps-folder --install --uninstall --install-dcd --uninstall-dcd --self-update"
 
     echo "${docker_commands}"
     echo "${options}"
@@ -997,7 +997,7 @@ download_latest() {
     return 1
 }
 
-remote_version() {
+get_remote_version() {
     local url="$1"
     download_content "${url}" | grep -m1 '^DAPP_VERSION=' | sed -E 's/^DAPP_VERSION="([^"]+)".*/\1/' || true
 }
@@ -1033,7 +1033,7 @@ self_update() {
     fi
 
     local remote_ver
-    remote_ver="$(remote_version "${DAPP_SELF_UPDATE_VERSION_URL}")" || {
+    remote_ver="$(get_remote_version "${DAPP_SELF_UPDATE_VERSION_URL}")" || {
         err "Unable to fetch remote version from ${url}"
         return 1
     }
@@ -1095,12 +1095,15 @@ EOF
 
     chmod +x "${tmp}"
     mv "${tmp}" "${target}"
-    get_required_files
+
+    # Update version file
+    printf 'DAPP_VERSION="%s"' "${remote_ver}" > "${SCRIPT_DIR}/VERSION"
+
     echo "✅ Updated dapp from version ${DAPP_VERSION} to ${remote_ver} at ${target}"
 }
 
 get_required_files() {
-    # Files needed by dapp
+    # Really used if script updates and new files needed by app
     # Array format per line: FILENAME  "" or "+x"
     # Second colmn used for chmod. If "+x" exe bit will be set
     local required_files=(
@@ -1343,7 +1346,7 @@ case "${1:-}" in
     --self-update) self_update; exit 0 ;;
     --list-apps) list_apps; exit 0 ;;
     --apps-folder) echo "${DAPP_DIR}"; exit 0 ;;
-    -v|version) echo "dapp version ${DAPP_VERSION}"; exit 0 ;;
+    -v|--version) echo "dapp version: ${DAPP_VERSION}"; exit 0 ;;
     -h|--help) print_help; exit 0 ;;
     @ls) list_apps; exit 0 ;;
     @list-help) list_help; exit 0 ;;
