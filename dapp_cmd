@@ -52,10 +52,9 @@ load_config() {
 
 load_config \
     "${DAPP_CONFIG_FILE}" \
-        "DAPP_DIR|DAPP_EDITOR|DAPP_LIST_SAFE|DAPP_RUN_MODE"
+        "DAPP_DIR|DAPP_EDITOR|DAPP_LIST_SAFE"
 
 DAPP_DIR="${DAPP_DIR:-/opt/dapps}"
-DAPP_RUN_MODE="${DAPP_RUN_MODE:-cd}"
 
 DAPP_SELF_UPDATE_BASE_URL="${DAPP_SELF_UPDATE_BASE_URL:-https://raw.githubusercontent.com/neutralvibes/dapp/refs/heads/main}"
 DAPP_SELF_UPDATE_VERSION_URL="${DAPP_SELF_UPDATE_BASE_URL}/VERSION"
@@ -106,22 +105,38 @@ yn_answer() {
     done
 }
 
-find_compose_file() {
+
+find_compose_files() {
     local dir="$1"
+     COMPOSE_FILES=()
 
     for file in \
         compose.yml \
         compose.yaml \
         docker-compose.yml \
-        docker-compose.yaml
+        docker-compose.yaml \
+        compose.override.yml \
+        compose.override.yaml \
+        docker-compose.override.yml \
+        docker-compose.override.yaml
     do
-        [[ -f "${dir}/${file}" ]] && {
-            echo "${file}"
-            return 0
-        }
+        [[ -f "${dir}/${file}" ]] && COMPOSE_FILES+=("${dir}/${file}")
     done
 
+    if (( ${#COMPOSE_FILES[@]} > 0)); then
+        return 0
+    fi
+
     return 1
+}
+
+build_compose_args() {
+    COMPOSE_ARGS=()
+
+    for file in "${COMPOSE_FILES[@]}"; do
+        COMPOSE_ARGS+=("-f")
+        COMPOSE_ARGS+=("${file}")
+    done
 }
 
 expand_shortcut_args() {
@@ -165,7 +180,7 @@ list_apps() {
     for dir in "${DAPP_DIR}"/*; do
         [[ -d "${dir}" ]] || continue
 
-        if find_compose_file "${dir}" >/dev/null 2>&1; then
+        if find_compose_files "${dir}" >/dev/null 2>&1; then
             apps+=( "$(basename "${dir}")" )
         fi
     done
@@ -188,7 +203,7 @@ get_all_apps() {
     for dir in "${DAPP_DIR}"/*; do
         [[ -d "${dir}" ]] || continue
 
-        if find_compose_file "${dir}" >/dev/null 2>&1; then
+        if find_compose_files "${dir}" >/dev/null 2>&1; then
             apps+=( "$(basename "${dir}")" )
         fi
     done
@@ -391,12 +406,14 @@ run_list_command() {
     shift
     local cmd="$1"
     shift
+    local list_command
+
     if [[ -z "${cmd}" ]]; then
         err "Missing COMMAND for list operation"
         exit 1
     fi
+
     expand_shortcut_args "${cmd}" "$@"
-    local list_command
 
     if [[ -n "${SHORTCUT_D_ARGS_1:-}" ]]; then
 
@@ -441,12 +458,11 @@ run_list_command() {
 
         echo "==== ${app} ===="
 
-        local compose_file
-        compose_file="$(find_compose_file "${app_dir}")" || {
+        if ! find_compose_files "${app_dir}"; then
             err "No compose file found in ${app_dir}"
             rc=1
             continue
-        }
+        fi
 
         if [[ -f "${app_dir}/${DAPP_APP_CFG}" ]]; then
             local not_in_whitelist=0
@@ -472,27 +488,14 @@ run_list_command() {
             (( not_in_whitelist )) && continue
         fi
 
-        if [[ "${DAPP_RUN_MODE:-cd}" == "cd" ]]; then
-            pushd "${app_dir}" &>/dev/null || exit
+        build_compose_args
 
-            if [[ -n "${SHORTCUT_D_ARGS_1:-}" ]]; then
-                "${compose_cmd[@]}"  "${SHORTCUT_D_ARGS_1[@]}" \
-                && \
-                "${compose_cmd[@]}" "${SHORTCUT_D_ARGS_2[@]}" || rc=1
-            else
-                "${compose_cmd[@]}" "${SHORTCUT_ARGS[@]}" || rc=1
-            fi
-
-            popd  &>/dev/null || exit
-
+        if [[ -n "${SHORTCUT_D_ARGS_1:-}" ]]; then
+            "${compose_cmd[@]}"  "${COMPOSE_ARGS[@]}" "${SHORTCUT_D_ARGS_1[@]}" \
+            && \
+            "${compose_cmd[@]}" "${COMPOSE_ARGS[@]}" "${SHORTCUT_D_ARGS_2[@]}" || rc=1
         else
-            if [[ -n "${SHORTCUT_D_ARGS_1:-}" ]]; then
-                "${compose_cmd[@]}" -f "${app_dir}/${compose_file}" "${SHORTCUT_D_ARGS_1[@]}" \
-                && \
-                "${compose_cmd[@]}" -f "${app_dir}/${compose_file}" "${SHORTCUT_D_ARGS_2[@]}" || rc=1
-            else
-                "${compose_cmd[@]}" -f "${app_dir}/${compose_file}" "${SHORTCUT_ARGS[@]}" || rc=1
-            fi
+            "${compose_cmd[@]}" "${COMPOSE_ARGS[@]}" "${SHORTCUT_ARGS[@]}" || rc=1
         fi
 
         echo -e "\n"
@@ -527,20 +530,29 @@ save_status_to_file() {
     local app
     local status
     local app_dir
-    local compose_file
     local -a apps=()
+
     mapfile -t apps < <(get_all_apps)
+
     for app in "${apps[@]}"; do
         app_dir="${DAPP_DIR}/${app}"
-        compose_file="$(find_compose_file "${app_dir}")" || continue
-        if "${compose_cmd[@]}" -f "${app_dir}/${compose_file}" ps -q 2>/dev/null | grep -q .; then
+
+        if ! find_compose_files "${app_dir}"; then
+            continue
+        fi
+
+        build_compose_args
+
+        if "${compose_cmd[@]}" "${COMPOSE_ARGS[@]}" ps -q 2>/dev/null | grep -q .; then
             status="running"
         else
             status="stopped"
         fi
+
         if [[ "${status}" == "${target_status}" ]]; then
             printf '%s\n' "${app}" >> "${path}"
         fi
+
     done
     echo "Saved apps with status '${target_status}' to ${path}"
 }
@@ -1289,13 +1301,12 @@ edit_app() {
         return 1
     }
 
-    local compose
-    compose="$(find_compose_file "${dir}")" || {
+    if ! find_compose_files "${dir}"; then
         err "No compose file found"
         return 1
-    }
+    fi
 
-    "${DAPP_EDITOR:-nano}" "${dir}/${compose}"
+    "${DAPP_EDITOR:-nano}" "${COMPOSE_FILES[0]}"
 }
 
 require_compose() {
@@ -1326,11 +1337,14 @@ status_all() {
 
     while read -r app; do
         local dir="${DAPP_DIR}/${app}"
-        local compose
 
-        compose="$(find_compose_file "${dir}")" || continue
+        if ! find_compose_files "${dir}"; then
+            continue
+        fi
 
-        if "${compose_cmd[@]}" -f "${dir}/${compose}" ps -q 2>/dev/null | grep -q .; then
+        build_compose_args
+
+        if "${compose_cmd[@]}" "${COMPOSE_ARGS[@]}" ps -q 2>/dev/null | grep -q .; then
             printf "%-25s running\n" "${app}"
         else
             printf "%-25s stopped\n" "${app}"
@@ -1364,42 +1378,40 @@ case "${1:-}" in
     *);;
 esac
 
-# No param list apps
 if [[ $# -eq 0 ]]; then
     print_help
     exit 0
 fi
 
 # Local mode
-if find_compose_file "${PWD}" >/dev/null 2>&1; then
+if find_compose_files "${PWD}" >/dev/null 2>&1; then
+
     if [[ ! -d "${DAPP_DIR}/$1" ]]; then
         expand_shortcut_args "$@"
         set -- "${SHORTCUT_ARGS[@]}"
 
-        compose_file="$(find_compose_file "${PWD}")"
         require_compose
+        build_compose_args
 
         if [[ -n "${SHORTCUT_D_ARGS_1:-}" ]]; then
-            "${compose_cmd[@]}"  "${SHORTCUT_D_ARGS_1[@]}" \
+            "${compose_cmd[@]}" "${COMPOSE_ARGS[@]}" "${SHORTCUT_D_ARGS_1[@]}" \
             && \
-            "${compose_cmd[@]}" "${SHORTCUT_D_ARGS_2[@]}"
+            "${compose_cmd[@]}" "${COMPOSE_ARGS[@]}" "${SHORTCUT_D_ARGS_2[@]}"
             exit $?
         fi
 
-        if [[ "${DAPP_RUN_MODE}" == "cd" ]]; then
-            "${compose_cmd[@]}" -f "${compose_file}" "$@"
-        else
-        "${compose_cmd[@]}" -f "${compose_file}" "$@"
-        fi
-
+        "${compose_cmd[@]}" "${COMPOSE_ARGS[@]}" "$@"
+        # set +x
         exit $?
     fi
+
 fi
 
 app="$1"
 app_dir="${DAPP_DIR}/${app}"
 
 [[ -d "${app_dir}" ]] || {
+    echo "Poop"
     err "No compose file here and Docker App '${app}' not found under ${DAPP_DIR}"
     exit 1
 }
@@ -1410,10 +1422,10 @@ case "${2:-}" in
     *) ;;
 esac
 
-compose_file="$(find_compose_file "${app_dir}")" || {
+if ! find_compose_files "${app_dir}"; then
     err "No compose file found in ${app_dir}"
     exit 1
-}
+fi
 
 cmd="${2:-ps}"
 
@@ -1425,18 +1437,19 @@ set -- "${app}" "${SHORTCUT_ARGS[@]}"
 pushd "${app_dir}" >/dev/null || exit 1
 
 require_compose
+build_compose_args
 
 if [[ -n "${SHORTCUT_D_ARGS_1:-}" ]]; then
-    "${compose_cmd[@]}" -f "${compose_file}" "${SHORTCUT_D_ARGS_1[@]}" \
+    "${compose_cmd[@]}" "${COMPOSE_ARGS[@]}" "${SHORTCUT_D_ARGS_1[@]}" \
     && \
-    "${compose_cmd[@]}" -f "${compose_file}" "${SHORTCUT_D_ARGS_2[@]}"
+    "${compose_cmd[@]}" "${COMPOSE_ARGS[@]}" "${SHORTCUT_D_ARGS_2[@]}"
 
     popd >/dev/null || true
     exit $?
 fi
 
 "${compose_cmd[@]}" \
-    -f "${compose_file}" \
+    "${COMPOSE_ARGS[@]}" \
     "${cmd}" \
     "${@:3}"
 

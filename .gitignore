@@ -1,5 +1,5 @@
 *.code-workspace
 .vscode
 gpg_public_key.asc
-.notes
+BEFORE_COMMIT_CHECK.md
 
