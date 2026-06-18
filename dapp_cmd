@@ -176,7 +176,6 @@ list_apps() {
     local dir
     local -a apps=()
 
-    # Gather matching directories
     for dir in "${DAPP_DIR}"/*; do
         [[ -d "${dir}" ]] || continue
 
@@ -185,11 +184,9 @@ list_apps() {
         fi
     done
 
-    # Check array length instead of using a flag variable
     if [[ ${#apps[@]} -eq 0 ]]; then
         echo "NO-DOCKER-APPS-FOUND, under dapps folder ${DAPP_DIR}"
     else
-        # Sort and display the found apps
         printf '%s\n' "${apps[@]}" | sort
     fi
 }
@@ -228,7 +225,6 @@ is_list_safe() {
     IFS=';' read -ra patterns <<< "${whitelist-?}"
 
     for pattern in "${patterns[@]}"; do
-        # Strip leading/trailing whitespace
         pattern="${pattern#"${pattern%%[![:space:]]*}"}"
         pattern="${pattern%"${pattern##*[![:space:]]}"}"
 
@@ -1108,7 +1104,6 @@ EOF
     chmod +x "${tmp}"
     mv "${tmp}" "${target}"
 
-    # Update version file
     printf 'DAPP_VERSION="%s"' "${remote_ver}" > "${SCRIPT_DIR}/VERSION"
 
     echo "✅ Updated dapp from version ${DAPP_VERSION} to ${remote_ver} at ${target}"
@@ -1198,7 +1193,7 @@ install_self() {
 
     local src
 
-    # allow non-root installs for testing via DAPP_ALLOW_USER_INSTALL=1
+    # allow non-root installs for CI testing via DAPP_ALLOW_USER_INSTALL=1
     if [[ "${DAPP_ALLOW_USER_INSTALL:-}" != "1" ]]; then
         require_root
     else
@@ -1258,7 +1253,7 @@ EOF
 }
 
 uninstall_self() {
-    # allow non-root uninstall for testing via DAPP_ALLOW_USER_INSTALL=1
+    # allow non-root uninstall for CI testing via DAPP_ALLOW_USER_INSTALL=1
     if [[ "${DAPP_ALLOW_USER_INSTALL:-}" != "1" ]]; then
         require_root
     else
