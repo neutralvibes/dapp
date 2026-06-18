@@ -33,7 +33,7 @@ fi
 
 # Verify version matches with VERSION file
 av="$(bash "$DAPP_SCRIPT" --version | cut -d ':' -f 2 | xargs)"
-vv="$(cat VERSION | grep -m1 '^DAPP_VERSION=' | sed -E 's/^DAPP_VERSION="([^"]+)".*/\1/')"
+vv="$(grep -m1 '^DAPP_VERSION=' VERSION| sed -E 's/^DAPP_VERSION="([^"]+)".*/\1/')"
 
 if [[ "${av}" == "${vv}" ]]; then
     echo "INSTALL: version, ${av} matches VERSION file, ${vv}"
