@@ -25,6 +25,8 @@ SCRIPT_DIR="$(cd "$(dirname "${SCRIPT_PATH}")" >/dev/null 2>&1 && pwd)"
 DAPP_CONFIG_FILE="${SCRIPT_DIR}/.config"
 DAPP_DIR="${DAPP_DIR:-}"
 
+DAPP_DRY_RUN="${DAPP_DRY_RUN:-}"
+
 cfg_value() {
     local value="${1%\"}"
     echo "${value#\"}"
@@ -443,6 +445,9 @@ run_list_command() {
     local rc=0
     local app
 
+    DRUN=()
+    [[ -n "${DAPP_DRY_RUN}" ]] && DRUN+=("echo")
+
     for app in "${apps[@]}"; do
         local app_dir="${DAPP_DIR}/${app}"
 
@@ -487,11 +492,11 @@ run_list_command() {
         build_compose_args
 
         if [[ -n "${SHORTCUT_D_ARGS_1:-}" ]]; then
-            "${compose_cmd[@]}"  "${COMPOSE_ARGS[@]}" "${SHORTCUT_D_ARGS_1[@]}" \
+            "${DRUN[@]}" "${compose_cmd[@]}"  "${COMPOSE_ARGS[@]}" "${SHORTCUT_D_ARGS_1[@]}" \
             && \
-            "${compose_cmd[@]}" "${COMPOSE_ARGS[@]}" "${SHORTCUT_D_ARGS_2[@]}" || rc=1
+            "${DRUN[@]}" "${compose_cmd[@]}" "${COMPOSE_ARGS[@]}" "${SHORTCUT_D_ARGS_2[@]}" || rc=1
         else
-            "${compose_cmd[@]}" "${COMPOSE_ARGS[@]}" "${SHORTCUT_ARGS[@]}" || rc=1
+            "${DRUN[@]}" "${compose_cmd[@]}" "${COMPOSE_ARGS[@]}" "${SHORTCUT_ARGS[@]}" || rc=1
         fi
 
         echo -e "\n"
@@ -1347,14 +1352,39 @@ status_all() {
     done < <(list_apps)
 }
 
+if [[ $# -eq 0 ]]; then
+    print_help
+    exit 0
+fi
+
+# Process flags in any position
+TARGS=()
+
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --dry-run)
+            DAPP_DRY_RUN=1
+            shift
+            ;;
+        *)
+            TARGS+=("$1")
+            shift
+            ;;
+    esac
+done
+set -- "${TARGS[@]}"
+unset TARGS
+
+
 case "${1:-}" in
-    --install) install_self; exit 0 ;;
-    --uninstall) uninstall_self; exit 0 ;;
-    --uninstall-dcd) uninstall_dcd; exit 0 ;;
-    --install-dcd) install_dcd; exit 0 ;;
-    --self-update) self_update; exit 0 ;;
-    --list-apps) list_apps; exit 0 ;;
     --apps-folder) echo "${DAPP_DIR}"; exit 0 ;;
+    --dry-run) echo "${DAPP_DIR}"; exit 0 ;;
+    --install) install_self; exit 0 ;;
+    --install-dcd) install_dcd; exit 0 ;;
+    --list-apps) list_apps; exit 0 ;;
+    --self-update) self_update; exit 0 ;;
+    --uninstall-dcd) uninstall_dcd; exit 0 ;;
+    --uninstall) uninstall_self; exit 0 ;;
     -v|--version) echo "dapp version: ${DAPP_VERSION}"; exit 0 ;;
     -h|--help) print_help; exit 0 ;;
     @ls) list_apps; exit 0 ;;
@@ -1373,11 +1403,6 @@ case "${1:-}" in
     *);;
 esac
 
-if [[ $# -eq 0 ]]; then
-    print_help
-    exit 0
-fi
-
 # Local mode
 if find_compose_files "${PWD}" >/dev/null 2>&1; then
 
@@ -1389,14 +1414,16 @@ if find_compose_files "${PWD}" >/dev/null 2>&1; then
         build_compose_args
 
         if [[ -n "${SHORTCUT_D_ARGS_1:-}" ]]; then
-            "${compose_cmd[@]}" "${COMPOSE_ARGS[@]}" "${SHORTCUT_D_ARGS_1[@]}" \
-            && \
-            "${compose_cmd[@]}" "${COMPOSE_ARGS[@]}" "${SHORTCUT_D_ARGS_2[@]}"
+            "${DRUN[@]}" "${compose_cmd[@]}" "${COMPOSE_ARGS[@]}" "${SHORTCUT_D_ARGS_1[@]}"
+            rc=$?
+
+            [[ rc -ne 0 ]] && exit $rc
+
+            "${DRUN[@]}" "${compose_cmd[@]}" "${COMPOSE_ARGS[@]}" "${SHORTCUT_D_ARGS_2[@]}"
             exit $?
         fi
 
-        "${compose_cmd[@]}" "${COMPOSE_ARGS[@]}" "$@"
-        # set +x
+        "${DRUN[@]}" "${compose_cmd[@]}" "${COMPOSE_ARGS[@]}" "$@"
         exit $?
     fi
 
@@ -1434,19 +1461,20 @@ pushd "${app_dir}" >/dev/null || exit 1
 require_compose
 build_compose_args
 
-if [[ -n "${SHORTCUT_D_ARGS_1:-}" ]]; then
-    "${compose_cmd[@]}" "${COMPOSE_ARGS[@]}" "${SHORTCUT_D_ARGS_1[@]}" \
-    && \
-    "${compose_cmd[@]}" "${COMPOSE_ARGS[@]}" "${SHORTCUT_D_ARGS_2[@]}"
+DRUN=()
+[[ -n "${DAPP_DRY_RUN}" ]] && DRUN+=("echo")
 
+if [[ -n "${SHORTCUT_D_ARGS_1:-}" ]]; then
+    "${DRUN[@]}" "${compose_cmd[@]}" "${COMPOSE_ARGS[@]}" "${SHORTCUT_D_ARGS_1[@]}" \
+    && \
+    "${DRUN[@]}" "${compose_cmd[@]}" "${COMPOSE_ARGS[@]}" "${SHORTCUT_D_ARGS_2[@]}"
+
+    rc=$?
     popd >/dev/null || true
-    exit $?
+    exit "${rc}"
 fi
 
-"${compose_cmd[@]}" \
-    "${COMPOSE_ARGS[@]}" \
-    "${cmd}" \
-    "${@:3}"
+"${DRUN[@]}" "${compose_cmd[@]}" "${COMPOSE_ARGS[@]}" "${cmd}" "${@:3}"
 
 rc=$?
 
