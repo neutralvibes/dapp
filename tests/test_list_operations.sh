@@ -95,7 +95,7 @@ if bash "$DAPP_SCRIPT" @list=app2 logs -t | grep -c 'Blocked by'; then
 fi
 
 # --dry-run
-if bash "$DAPP_SCRIPT" @list=app2 logs --dry-run| grep -c 'docker compose'; then
+if bash "$DAPP_SCRIPT" @list=app2 ps --dry-run| grep -c 'docker compose'; then
     echo "--dry-run: expected 'docker compose' command printed." >&2
     exit 11
 fi
